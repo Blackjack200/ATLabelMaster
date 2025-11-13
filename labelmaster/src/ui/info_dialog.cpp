@@ -4,6 +4,7 @@
 #include <qglobal.h>
 #include <qguiapplication_platform.h>
 #include <qobject.h>
+#include <qpoint.h>
 #include <qscreen.h>
 #include <qtmetamacros.h>
 #include <qtransform.h>
@@ -23,8 +24,9 @@ void InfoDialog::centerOn(QWidget* parent) {
         parent = this->parentWidget();
     }
     if (parent) {
-        auto hostRect = this->geometry();
-        this->move(hostRect.center() - this->rect().center());
+        auto hostRect = parent->rect();
+        this->move(parent->mapToGlobal(QPoint(0, 0)) + hostRect.center() - this->rect().center());
+        qDebug() << hostRect.topLeft();
     } else {
         QRect screenGeometry = QGuiApplication::screens()[0]->geometry();
         int x                = (screenGeometry.width() - this->width()) / 2;

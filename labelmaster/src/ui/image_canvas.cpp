@@ -39,6 +39,7 @@
 #include <qsize.h>
 #include <qtmetamacros.h>
 #include <qvariant.h>
+#include <type_traits>
 #include <vector>
 
 // ---------- JSON 工具 ----------
@@ -585,7 +586,7 @@ void ImageCanvas::mouseReleaseEvent(QMouseEvent* e) {
 void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
     mousePosW_   = e->pos();
     mouseInside_ = rect().contains(mousePosW_);
-    //拖动图片
+    // 拖动图片
     if (panning_) {
         const QPoint d = e->pos() - lastMousePos_;
         pan_ += d;
@@ -593,7 +594,7 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
         update();
         return;
     }
-    //绘制辅助框
+    // 绘制辅助框
     if (draggingRect_) {
         QPoint a     = widgetToImage(dragRectStartW_).toPoint();
         QPoint b     = widgetToImage(e->pos()).toPoint();
@@ -601,46 +602,41 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
         update();
         return;
     }
-    //拖动角点
+    // 拖动角点
     if (dragHandle_ >= 0 && selectedIndex_ >= 0 && selectedIndex_ < dets_.size()) {
-        auto& A          = dets_[selectedIndex_];
-        const QPointF pi = widgetToImage(e->pos());
-        const auto ensureBound = [](int index){
+        auto& A                = dets_[selectedIndex_];
+        const QPointF pi       = widgetToImage(e->pos());
+        const auto ensureBound = [](int index) {
             index = index > 3 ? index - 4 : index;
             index = index < 0 ? 4 + index : index;
             return index;
         };
-        const auto getPosByIndex = [&](int index){
+        const auto getPosByIndex = [&](const int& index) {
             switch (index) {
-                case 0:
-                    return A.p0;
-                case 1:
-                    return A.p1;
-                case 2:
-                    return A.p2;
-                default:
-                    return A.p3;
+            case 0: return A.p0;
+            case 1: return A.p1;
+            case 2: return A.p2;
+            default: return A.p3;
             }
         };
-        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) {//平行四边形绘制模式
-            const QPointF pointList[4] = { A.p0 ,A.p1 , A.p2 , A.p3,};
-            int diagonP1 = dragHandle_ - 1;
-            int diagonP2 = dragHandle_ + 1;
-            diagonP1 = ensureBound(diagonP1);
-            diagonP2 = ensureBound(diagonP2);
-            getPosByIndex(diagonP1) + getPosByIndex(diagonP2) - pi;
-            
-    
-            
-         
-        } else {
-            switch (dragHandle_) {
-                case 0: A.p0 = pi; break;
-                case 1: A.p1 = pi; break;
-                case 2: A.p2 = pi; break;
-                case 3: A.p3 = pi; break;
+        const auto setPosByIndex = [&](const int& index, const QPointF& point) {
+            switch (index) {
+            case 0: A.p0 = point;
+            case 1: A.p1 = point;
+            case 2: A.p2 = point;
+            default: A.p3 = point;
             }
-
+        };
+        setPosByIndex(dragHandle_, pi);
+        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行四边形绘制模式
+            int diagonP1       = dragHandle_ - 1;
+            int diagonP2       = dragHandle_ + 1;
+            int another        = dragHandle_ + 2;
+            diagonP1           = ensureBound(diagonP1);
+            diagonP2           = ensureBound(diagonP2);
+            another            = ensureBound(another);
+            QPointF anotherPos = getPosByIndex(diagonP1) + getPosByIndex(diagonP2) - pi;
+            setPosByIndex(another, anotherPos);
         }
         // 不在移动中重排，避免把当前拖拽句柄“换角”
         emit detectionUpdated(selectedIndex_, A);
@@ -839,14 +835,15 @@ void ImageCanvas::promptEditSelectedInfo(bool isCurrent) {
     //     this, tr("Edit Class"), tr("Class label:"), QLineEdit::Normal, oldCls, &ok);
     // if (ok)
     //     setSelectedClass(cls.trimmed());
-    ui::InfoDialog dialog = ui::InfoDialog(this);
-    QObject::connect(&dialog, &ui::InfoDialog::dataChanged, this, &ImageCanvas::updateInfo);
+    ui::InfoDialog* dialog = new ui::InfoDialog(this);
+    QObject::connect(dialog, &ui::InfoDialog::dataChanged, this, &ImageCanvas::updateInfo);
     if (isCurrent) {
-        dialog.updateInfo(true);
+        dialog->updateInfo(true);
     } else {
-        dialog.updateInfo(false, dets_[selectedIndex_].cls, dets_[selectedIndex_].color);
+        dialog->updateInfo(false, dets_[selectedIndex_].cls, dets_[selectedIndex_].color);
     }
-    dialog.show();
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
 }
 
 void ImageCanvas::setupSvg() {
