@@ -17,6 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo fonts-noto-cjk \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+RUN wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
+    apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
+    echo "deb https://apt.repos.intel.com/openvino ubuntu22 main" > /etc/apt/sources.list.d/intel-openvino.list && \
+    apt-get update && \
+    apt-cache search openvino && \
+    apt-get install -y openvino-2025.3.0 && \
+    rm -f GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
+    rm -rf /var/lib/apt/lists/*
+
 ARG CLANG_VERSION=20
 
 RUN wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /usr/share/keyrings/llvm-snapshot.gpg && \
