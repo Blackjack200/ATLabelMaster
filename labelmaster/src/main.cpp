@@ -19,7 +19,7 @@
 int main(int argc, char* argv[]) {
     // 1) 初始化应用配置系统(在 QApplication 之前，否则会Unknown Organization)
     // 2) 安装 Qt 的全局消息处理器，尽早捕获日志
-    controller::AppSettings::initOrgApp("LabelMaster.org", "LabelMasterOrg", "LabelMasterApp");
+    controller::AppSettings::initOrgApp("LabelMaster", "LabelMaster", "LabelMaster.org");
     QApplication app(argc, argv);
     logger::Logger::installQtHandler();
     ui::MainWindow w;
