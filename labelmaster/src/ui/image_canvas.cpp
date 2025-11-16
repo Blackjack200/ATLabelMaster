@@ -631,16 +631,36 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
             }
             qDebug() << A.p0 << " " << A.p1 << " " << A.p2 << " " << A.p3 << "\n";
         };
-        setPosByIndex(dragHandle_, pi);
-        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行四边形绘制模式
-            int diagonP1       = dragHandle_ - 1;
-            int diagonP2       = dragHandle_ + 1;
-            int another        = dragHandle_ + 2;
-            diagonP1           = ensureBound(diagonP1);
-            diagonP2           = ensureBound(diagonP2);
-            another            = ensureBound(another);
-            QPointF anotherPos = getPosByIndex(diagonP1) + getPosByIndex(diagonP2) - pi;
-            setPosByIndex(another, anotherPos);
+        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行四绘制模式
+            QPointF res;
+            res.setX(pi.x());
+            qreal ty;
+            switch (dragHandle_) {
+            case 0: {
+                const QPointF t = A.p2 - A.p1;
+                ty              = A.p3.y() + (t.y() / t.x()) * (A.p3.x() - A.p0.x());
+                break;
+            }
+            case 1: {
+                const QPointF t = A.p2 - A.p3;
+                ty              = A.p0.y() - (t.y() / t.x()) * (A.p0.x() - A.p1.x());
+                break;
+            }
+            case 2: {
+                const QPointF t = A.p0 - A.p1;
+                ty              = A.p3.y() - (t.y() / t.x()) * (A.p3.x() - A.p2.x());
+                break;
+            }
+            case 3: {
+                const QPointF t = A.p0 - A.p1;
+                ty              = A.p2.y() - (t.y() / t.x()) * (A.p2.x() - A.p3.x());
+                break;
+            }
+            }
+            res.setY(ty);
+            setPosByIndex(dragHandle_, res);
+        } else {
+            setPosByIndex(dragHandle_, pi);
         }
         // 不在移动中重排，避免把当前拖拽句柄“换角”
         emit detectionUpdated(selectedIndex_, dets_[selectedIndex_]);
