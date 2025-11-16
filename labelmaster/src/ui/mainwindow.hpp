@@ -1,9 +1,9 @@
 #pragma once
+#include "service/file.hpp"
+#include "ui_mainwindow.h"
 #include <QMainWindow>
 #include <memory>
 #include <qaction.h>
-#include "service/file.hpp"
-#include "ui_mainwindow.h"
 
 QT_BEGIN_NAMESPACE
 class QAbstractItemModel;
@@ -40,11 +40,14 @@ signals:
     void sigDeleteRequested();
     void sigSmartAnnotateRequested();
     void sigSettingsRequested();
+    void sigGetStasRequested(int colorId , int classId);
     void sigFileActivated(const QModelIndex&);
     void sigDroppedPaths(const QStringList&);
     void sigKeyCommand(const QString&);
     // —— 类别相关输出 ——
-    void sigClassSelected(const QString& name);  // 选中类别时发出
+    void sigStasUpdateRequested(const int& count);
+    void sigClassSelected(const QString& name); // 选中类别时发出
+    void sigStasGetted(const int& count);
 
     // FILE：通知 service 侧刷新索引（可选但推荐）
     void sigTreeModelReplaced(QAbstractItemModel* model);
@@ -52,6 +55,7 @@ signals:
 
 public slots:
     // —— 外部输入（更新 UI）——
+    void showStasDialog();
     void showImage(const QImage& img);
     void appendLog(const QString& line);
     void setFileModel(QAbstractItemModel* model);
@@ -61,9 +65,9 @@ public slots:
     void setUiEnabled(bool on);
     void setRoot(const QModelIndex& idx);
 
-    // —— 类别列表 —— 
+    // —— 类别列表 ——
     void setClassList(const QStringList& names);
-    void setCurrentClass(const QString& name);    // 可选：代码里直接选中某类
+    void setCurrentClass(const QString& name); // 可选：代码里直接选中某类
 
 protected:
     void keyPressEvent(QKeyEvent* e) override;
@@ -78,12 +82,12 @@ private:
 
 private:
     std::unique_ptr<Ui::MainWindow> ui_;
-    bool logTimestamp_   = true;
+    bool logTimestamp_    = true;
     bool dragDropEnabled_ = true;
 
     // 类别
     QStringListModel* clsModel_ = nullptr;
-    QString           currentClass_;
+    QString currentClass_;
 };
 
 } // namespace ui

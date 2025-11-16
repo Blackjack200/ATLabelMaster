@@ -28,10 +28,10 @@ public:
 
 public slots:
     // === 打开 ===
-    void openFolderDialog(const DataSet& type= DataSet::LabelMaster);                // 弹框选目录
-    void importFrom(const QAction* action); // 导入其他数据集
-    void openPaths(const QStringList&);     // 拖拽/命令行路径
-    void openIndex(const QModelIndex&);     // 由文件树激活
+    void openFolderDialog(const DataSet& type = DataSet::LabelMaster); // 弹框选目录
+    void importFrom(const QAction* action);                            // 导入其他数据集
+    void openPaths(const QStringList&);                                // 拖拽/命令行路径
+    void openIndex(const QModelIndex&);                                // 由文件树激活
 
     // === 浏览 ===
     void next();
@@ -42,6 +42,9 @@ public slots:
 
     // === 保存标注 ===
     void saveLabels(const QVector<Armor>& armors);
+
+    // === 获取统计信息 ==
+    void getStas(int colorId , int classId);
 
 signals:
     // === 给 UI 的输出 ===
@@ -54,6 +57,8 @@ signals:
 
     // === 打开图片时加载到的标注 ===
     void labelsLoaded(const QVector<Armor>& armors);
+    // ===统计信息获取==
+    void StasGetted(const int& count);
 
 private:
     // 目录加载完成后再尝试选第一张
@@ -87,6 +92,7 @@ private:
     static QString normalizeClasslToken(const QString& cls); // "1|2|3|4|G|O|Bs|Bb"
     static QString classId2Token(const int& Id);
     static int classToken2Id(const QString& nomalizedToken);
+    static int colorToken2Id(const QString& token);
 
 private:
     QString pendingDir_;                                     // 临时Dir

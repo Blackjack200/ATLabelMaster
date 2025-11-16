@@ -14,26 +14,10 @@ InfoDialog::InfoDialog(QWidget* parent)
     : QDialog(parent)
     , ui(new Ui::InfoDialog) {
     ui->setupUi(this);
-    centerOn(parent);
-}
+    this->setWindowTitle("Edit Info");
+};
 
 InfoDialog::~InfoDialog() { delete this->ui; }
-// 居中对齐
-void InfoDialog::centerOn(QWidget* parent) {
-    if (!parent) {
-        parent = this->parentWidget();
-    }
-    if (parent) {
-        auto hostRect = parent->rect();
-        this->move(parent->mapToGlobal(QPoint(0, 0)) + hostRect.center() - this->rect().center());
-        qDebug() << hostRect.topLeft();
-    } else {
-        QRect screenGeometry = QGuiApplication::screens()[0]->geometry();
-        int x                = (screenGeometry.width() - this->width()) / 2;
-        int y                = (screenGeometry.height() - this->height()) / 2;
-        this->move(x, y);
-    }
-}
 // 取消
 void InfoDialog::reject() { this->done(1); }
 // 确定

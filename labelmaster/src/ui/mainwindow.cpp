@@ -1,6 +1,9 @@
 #include "mainwindow.hpp"
 #include "logger/core.hpp"
 
+#include "service/file.hpp"
+#include "ui/image_canvas.hpp"
+#include "ui/stas_dialog.h"
 #include <QAction>
 #include <QApplication>
 #include <QDateTime>
@@ -17,9 +20,10 @@
 #include <QTreeView>
 #include <QUrl>
 #include <qaction.h>
+#include <qkeysequence.h>
 #include <qmenu.h>
-
-#include "ui/image_canvas.hpp"
+#include <qnamespace.h>
+#include <qobject.h>
 
 using ui::MainWindow;
 
@@ -72,6 +76,13 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 /* ---------------- 外部输入（更新 UI） ---------------- */
+void MainWindow::showStasDialog() {
+    ui::StasDialog* dialog = new ui::StasDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &ui::StasDialog::getStasRequested, this, &ui::MainWindow::sigGetStasRequested);
+    connect(this, &ui::MainWindow::sigStasUpdateRequested , dialog, &ui::StasDialog::updateStasData );
+    dialog->show();
+}
 void MainWindow::showImage(const QImage& img) {
     ui_->label->setImage(img);
     ui_->label->setAlignment(Qt::AlignCenter);
@@ -298,6 +309,7 @@ void MainWindow::setupActions() {
     ensureAction(ui_->actionDelete, QKeySequence::Delete, tr("Delete"));
     ensureAction(ui_->actionSmart, QKeySequence(Qt::Key_Space), tr("Smart Annotate (Space)"));
     ensureAction(ui_->actionSettings, {}, tr("Settings"));
+    ensureAction(ui_->actionStas, QKeySequence(Qt::Key_S), tr("Get STAS."));
 
     connect(ui_->actionOpen, &QAction::triggered, this, &MainWindow::sigOpenFolderRequested);
     connect(ui_->actionSave, &QAction::triggered, this, &MainWindow::sigSaveRequested);
@@ -306,6 +318,7 @@ void MainWindow::setupActions() {
     connect(ui_->actionHistEq, &QAction::triggered, this, &MainWindow::sigHistEqRequested);
     connect(ui_->actionDelete, &QAction::triggered, this, &MainWindow::sigDeleteRequested);
     connect(ui_->actionSmart, &QAction::triggered, this, &MainWindow::sigSmartAnnotateRequested);
+    connect(ui_->actionStas, &QAction::triggered, this, &MainWindow::showStasDialog);
     connect(ui_->actionSettings, &QAction::triggered, this, &MainWindow::sigSettingsRequested);
     connect(ui_->menuImport, &QMenu::triggered, this, &MainWindow::sigImportFolderRequested);
 }
