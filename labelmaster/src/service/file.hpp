@@ -41,10 +41,10 @@ public slots:
     void deleteCurrent(); // 直接删除当前文件（简单实现）
 
     // === 保存标注 ===
-    void saveLabels(const QVector<Armor>& armors);
+    void saveData(const QVector<Armor>& armors, const QImage& image);
 
     // === 获取统计信息 ==
-    void getStas(int colorId , int classId);
+    void getStas(int colorId, int classId);
 
 signals:
     // === 给 UI 的输出 ===

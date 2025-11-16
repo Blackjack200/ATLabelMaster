@@ -915,6 +915,7 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 
     for (const auto& a : armors) {
         // —— 解析类别：取颜色 & 图案类型（用类型去找 svg）
+        qDebug() << "Drawing armor:" << a.p0 << a.p1 << a.p2 << a.p3 << a.cls << a.color;
         QString color, type;
         color = a.color;
         type  = a.cls;
@@ -941,7 +942,6 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 
         // 选择 big/small 的“源四点”（同样是 TL, BL, BR, TR；已在画布坐标）
         const QPolygonF& src = isBigType(type) ? big_src_on_painter : small_src_on_painter;
-
         // —— 求单应 & 渲染
         QTransform H;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -966,7 +966,7 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 
 void ImageCanvas::requestSave() {
     qDebug() << "requestSave called";
-    emit annotationsPublished(dets_);
+    emit annotationsPublished(dets_, img_);
 }
 void ImageCanvas::ProcessInfoChanged(
     const QString& EditedClass, const QString& Color, bool isCurrent = false) {

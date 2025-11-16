@@ -55,6 +55,7 @@ signals:
 
 public slots:
     // —— 外部输入（更新 UI）——
+    void showSettingDialog();
     void showStasDialog();
     void showImage(const QImage& img);
     void appendLog(const QString& line);

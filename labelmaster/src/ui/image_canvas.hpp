@@ -83,7 +83,7 @@ signals:
     void detectionRemoved(int index);               // 删除哪个
 
     // 批量发布（供外部保存）
-    void annotationsPublished(const QVector<Armor>& armors);
+    void annotationsPublished(const QVector<Armor>& armors, const QImage& image);
 
 protected:
     // 绘制与交互
