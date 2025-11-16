@@ -793,11 +793,9 @@ void FileService::saveData(const QVector<Armor>& armors, const QImage& image) {
     if (image.save(imgPath)) {
         emit status(tr("已保存图片：%1").arg(QFileInfo(imgPath).fileName()), 900);
         LOGI(QString("保存图片：%1").arg(imgPath));
-        return;
     } else {
         emit status(tr("保存图片失败"), 1200);
         LOGE(QString("保存图片失败：%1").arg(imgPath));
-        return;
     }
     // 保存标注
     const QString lblPath = labelFileForImage(imgPath);
