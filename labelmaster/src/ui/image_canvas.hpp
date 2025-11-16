@@ -6,7 +6,9 @@
 #include <QRect>
 #include <QString>
 #include <QVector>
+#include <qglobal.h>
 #include <qimage.h>
+#include <qlist.h>
 #include <qobject.h>
 #include <qvariant.h>
 
@@ -77,6 +79,7 @@ signals:
     void detectionSelected(int index);              // -1 无选中
     void detectionHovered(int index);               // -1 无悬停
     void detectionUpdated(int index, const Armor&); // 类别或点被改
+    void detectionUpdated(QVector<int> indexList, const Armor&); // 类别或点被改
     void detectionRemoved(int index);               // 删除哪个
 
     // 批量发布（供外部保存）

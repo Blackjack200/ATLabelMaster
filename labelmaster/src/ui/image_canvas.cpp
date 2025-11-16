@@ -624,11 +624,12 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
         };
         const auto setPosByIndex = [&](const int& index, const QPointF& point) {
             switch (index) {
-            case 0: A.p0 = point;
-            case 1: A.p1 = point;
-            case 2: A.p2 = point;
+            case 0: A.p0 = point; break;
+            case 1: A.p1 = point; break;
+            case 2: A.p2 = point; break;
             default: A.p3 = point;
             }
+            qDebug() << A.p0 << " " << A.p1 << " " << A.p2 << " " << A.p3 << "\n";
         };
         setPosByIndex(dragHandle_, pi);
         if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行四边形绘制模式
@@ -642,7 +643,7 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
             setPosByIndex(another, anotherPos);
         }
         // 不在移动中重排，避免把当前拖拽句柄“换角”
-        emit detectionUpdated(selectedIndex_, A);
+        emit detectionUpdated(selectedIndex_, dets_[selectedIndex_]);
         update();
         return;
     }
@@ -839,7 +840,7 @@ void ImageCanvas::promptEditSelectedInfo(bool isCurrent) {
     // if (ok)
     //     setSelectedClass(cls.trimmed());
     ui::InfoDialog* dialog = new ui::InfoDialog(this);
-    QObject::connect(dialog, &ui::InfoDialog::InfoGetted, this, &ImageCanvas::ProcessInfoChanged);
+    connect(dialog, &ui::InfoDialog::InfoGetted, this, &ImageCanvas::ProcessInfoChanged);
     if (isCurrent) {
         dialog->updateInfo(true);
     } else {

@@ -2,6 +2,7 @@
 // File: service/file.cpp
 // ===============================
 #include "service/file.hpp"
+#include "detector/ai/detector.hpp"
 #include "types.hpp"
 #include <QBuffer>
 #include <QDir>
@@ -16,14 +17,17 @@
 #include <QSortFilterProxyModel>
 #include <chrono>
 #include <cstddef>
+#include <qabstractitemmodel.h>
 #include <qbuffer.h>
 #include <qdebug.h>
 #include <qdir.h>
 #include <qglobal.h>
 #include <qhashfunctions.h>
+#include <qiodevicebase.h>
 #include <qlist.h>
 #include <qmath.h>
 #include <qnamespace.h>
+#include <qpointer.h>
 #include <qsettings.h>
 #include <qsortfilterproxymodel.h>
 #include <qstringalgorithms.h>
@@ -38,6 +42,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../ui/stas_dialog.h"
+#include "../util/string.hpp"
 #include "controller/dataset.hpp"
 #include "controller/settings.hpp"
 #include "logger/core.hpp"
@@ -111,18 +117,16 @@ QString FileService::colorId2Letter(int id) {
     default: return "G";
     }
 }
-// int FileService::colorToken2Id(const QString& token){
-//      const QString l = token.trimmed().toUpper();
-//     if (l == "BLUE")
-//         return 0;
-//     if (l == "RED")
-//         return 1;
-//     if (l == "GRAY")
-//         return 2;
-//     if (l == "PURPLE")
-//         return 3;
-
-// }
+int FileService::colorToken2Id(const QString& token) {
+    const QString l = token.trimmed().toUpper();
+    if (l == "BLUE")
+        return 0;
+    if (l == "RED")
+        return 1;
+    if (l == "PURPLE")
+        return 3;
+    return 2;
+}
 // 颜色字母(B/R/G/P) → id(0/1/2/3)
 int FileService::colorLetter2Id(const QString& letter) {
     const QChar c = letter.trimmed().isEmpty() ? QChar() : letter.trimmed().at(0).toUpper();
@@ -411,11 +415,9 @@ bool FileService::openDir(const QString& dir, DataSet type) {
             const QModelIndex target = findFirstImageUnder(proxyRoot_);
 
             if (target.isValid()) {
-                qDebug() << proxy_->rowCount(target.parent());
                 for (int i = 0; i < proxy_->rowCount(target.parent()); i++) {
                     QString imgPath = fsModel_->filePath(
                         fsModel_->index(i, 0, mapFromProxyToSource(target.parent())));
-                    qDebug() << imgPath;
                     const QString labelPath = labelFileForImage(imgPath);
                     if (QFile::exists(labelPath)) {
                         switch (type) {
@@ -432,17 +434,11 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                             QTextStream ts(&labelFile);
                             while (!ts.atEnd()) {
                                 QString raw = ts.readLine();
-                                int hash    = raw.indexOf('#');
-                                if (hash >= 0)
-                                    raw = raw.left(hash);
-                                const QString line = raw.trimmed();
-                                if (line.isEmpty())
+                                QStringList t;
+                                if (!StringProcess::processLabelString(raw, t)) {
                                     continue;
-
-                                // x1 y1 x2 y2 x3 y3 x4 y4 color label
-                                QStringList t = line.simplified().split(' ');
-                                if (t.size() != 10)
-                                    continue;
+                                }
+                                
                                 for (int i = 2; i > 0; i--) {
                                     t.move(t.size() - i, 0);
                                 }
@@ -802,4 +798,46 @@ void FileService::saveLabels(const QVector<Armor>& armors) {
         emit status(tr("保存失败"), 1200);
         LOGE(QString("保存失败：%1").arg(lblPath));
     }
+}
+// 获取统计数据
+void FileService::getStas(int colorId, int classId) {
+    // 开始统计
+    int sum            = 0;
+    QModelIndex parent = proxyCurrent_.parent();
+    for (int i = 0; i < proxy_->rowCount(parent); i++) {
+        QString imgPath = fsModel_->filePath(fsModel_->index(i, 0, mapFromProxyToSource(parent)));
+        const QString labelPath = labelFileForImage(imgPath);
+        if (QFile::exists(labelPath)) {
+            QFile file(labelPath);
+            file.open(QIODevice::ReadOnly | QIODevice::Text);
+            QTextStream ts(&file);
+            while (!ts.atEnd()) {
+                QStringList t;
+                if (!StringProcess::processLabelString(ts.readLine(), t)) {
+                    continue;
+                }
+                bool ok      = false;
+                int colId    = t.at(0).toInt(&ok);
+                colId        = ok ? colId : colorToken2Id(t.at(0));
+                int clsId    = t.at(1).toInt(&ok);
+                clsId        = ok ? clsId : classToken2Id(normalizeClasslToken(t.at(1)));
+                auto checkId = [&](const int& value, const int& target) {
+                    if (target == -1) {
+                        return true;
+                    } else {
+                        if (value == target) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (checkId(colId, colorId)) {
+                    if (checkId(clsId, classId)) {
+                        sum++;
+                    }
+                }
+            }
+        }
+    }
+    emit StasGetted(sum);
 }

@@ -1,3 +1,4 @@
+#include "centered_dialog.h"
 #include "ui_info_dialog.h"
 #include <qdialog.h>
 #include <qglobal.h>
@@ -12,7 +13,7 @@ public:
     // 默认Gray, unknown
     explicit InfoDialog(QWidget* parent = nullptr);
     ~InfoDialog();
-    void centerOn(QWidget* parent);
+    // void centerOn(QWidget* parent);
     void updateInfo(
         bool isCurrent = false, const QString& defaultClass = "unknown",
         const QString& defaultColor = "Gray");
