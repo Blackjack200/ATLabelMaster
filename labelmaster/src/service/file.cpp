@@ -431,7 +431,6 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                                 fail("导入失败!无法打开Label:", labelPath);
                                 continue;
                             }
-                            qDebug() << labelPath;
                             QTextStream ts(&labelFile);
                             while (!ts.atEnd()) {
                                 QString raw = ts.readLine();
@@ -465,7 +464,6 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                                 // N（熄灭) 2
                                 // Purple	3
                                 int clsId = t.at(0).toInt();
-                                qDebug() << t.join(" ");
                                 if (0 <= clsId && clsId < 5) {
                                     convertStream << t.join(" ") << "\n";
                                 } else if (clsId > 5 && clsId < 9) {
@@ -478,7 +476,6 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                             }
                             convertStream.seek(0);
                             QString Text = convertStream.readAll();
-                            qDebug() << Text;
                             buffer.close();
                             labelFile.close();
                             labelFile.open(QIODevice::WriteOnly);

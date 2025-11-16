@@ -642,18 +642,18 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
                 break;
             }
             case 1: {
-                const QPointF t = A.p2 - A.p3;
-                ty              = A.p0.y() - (t.y() / t.x()) * (A.p0.x() - A.p1.x());
+                const QPointF t = A.p3 - A.p0;
+                ty              = A.p2.y() - (t.y() / t.x()) * (A.p2.x() - A.p1.x());
                 break;
             }
             case 2: {
-                const QPointF t = A.p0 - A.p1;
-                ty              = A.p3.y() - (t.y() / t.x()) * (A.p3.x() - A.p2.x());
+                const QPointF t = A.p3 - A.p0;
+                ty              = A.p1.y() + (t.y() / t.x()) * (A.p2.x() - A.p1.x());
                 break;
             }
             case 3: {
-                const QPointF t = A.p0 - A.p1;
-                ty              = A.p2.y() - (t.y() / t.x()) * (A.p2.x() - A.p3.x());
+                const QPointF t = A.p2 - A.p1;
+                ty              = A.p0.y() + (t.y() / t.x()) * (A.p3.x() - A.p0.x());
                 break;
             }
             }
@@ -935,7 +935,6 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 
     for (const auto& a : armors) {
         // —— 解析类别：取颜色 & 图案类型（用类型去找 svg）
-        qDebug() << "Drawing armor:" << a.p0 << a.p1 << a.p2 << a.p3 << a.cls << a.color;
         QString color, type;
         color = a.color;
         type  = a.cls;
