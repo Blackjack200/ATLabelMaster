@@ -4,12 +4,15 @@
 #include <QFileInfo>
 #include <QScopedPointer>
 #include <QStandardPaths>
+#include <qcoreapplication.h>
+#include <qobject.h>
 
 namespace controller {
 QScopedPointer<QSettings> AppSettings::s_iniOverride_;
 
-void AppSettings::initOrgApp(const QString& org, const QString& app) noexcept {
+void AppSettings::initOrgApp(const QString& org, const QString& app, const QString& domain) noexcept {
     // Best called in main() before creating QApplication/QGuiApplication.
+    QCoreApplication::setOrganizationDomain(domain);
     QCoreApplication::setOrganizationName(org);
     QCoreApplication::setApplicationName(app);
 }

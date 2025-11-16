@@ -8,7 +8,7 @@ namespace controller {
 class AppSettings final {
 public:
     // ---- lifecycle ----
-    static void initOrgApp(const QString& org, const QString& app) noexcept;
+    static void initOrgApp(const QString& org, const QString& app, const QString& domain) noexcept;
     static AppSettings& instance() noexcept;
     static void useIniFile(const QString& iniFilePath);
 
@@ -44,7 +44,7 @@ public:
     APP_SETTING_RW_INT (roiW,         Keys::kRoiW,         Def::kRoiW       )
     APP_SETTING_RW_INT (roiH,         Keys::kRoiH,         Def::kRoiH       )
     APP_SETTING_RW_STR (assetsDir,    Keys::kAssetsDir,    Def::kAssetsDir  )
-    APP_SETTING_RW_FLOAT (numberClassifierThreshold, Keys::kNumberClassifierThreshold, Def::kNumberClassifierThreshold)
+    APP_SETTING_RW_FLOAT(numberClassifierThreshold, Keys::kNumberClassifierThreshold, Def::kNumberClassifierThreshold)
 
 #undef APP_SETTING_RW_STR
 #undef APP_SETTING_RW_INT

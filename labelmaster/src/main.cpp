@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QFile>
 #include <pthread.h>
+#include <qapplication.h>
 #include <qglobal.h>
 #include <qobject.h>
 #include <qtmetamacros.h>
@@ -16,10 +17,10 @@
 #define ASSETS_PATH "/home/developer/ws/assets"
 
 int main(int argc, char* argv[]) {
-    // 1) 先安装 Qt 的全局消息处理器，尽早捕获日志
-
+    // 1) 初始化应用配置系统(在 QApplication 之前，否则会Unknown Organization)
+    // 2) 安装 Qt 的全局消息处理器，尽早捕获日志
+    controller::AppSettings::initOrgApp("LabelMaster.org", "LabelMasterOrg", "LabelMasterApp");
     QApplication app(argc, argv);
-
     logger::Logger::installQtHandler();
     ui::MainWindow w;
     FileService files;
@@ -49,6 +50,8 @@ int main(int argc, char* argv[]) {
     QObject::connect(&w, &ui::MainWindow::sigPrevRequested, &files, &FileService::prev);
     QObject::connect(&w, &ui::MainWindow::sigDeleteRequested, &files, &FileService::deleteCurrent);
     QObject::connect(&w, &ui::MainWindow::sigGetStasRequested, &files, &FileService::getStas);
+    QObject::connect(
+        &w, &ui::MainWindow::sigSettingsRequested, &w, &ui::MainWindow::showSettingDialog);
     QObject::connect(&files, &FileService::modelReady, &w, &ui::MainWindow::setFileModel);
     QObject::connect(&files, &FileService::rootChanged, &w, &ui::MainWindow::setRoot); // ★ 新增
     QObject::connect(
@@ -67,8 +70,7 @@ int main(int argc, char* argv[]) {
     QObject::connect(
         &files, &FileService::labelsLoaded, w.ui()->label, &ImageCanvas::setDetections);
     QObject::connect(
-        w.ui()->label, &ImageCanvas::annotationsPublished, &files, &FileService::saveLabels);
-
+        w.ui()->label, &ImageCanvas::annotationsPublished, &files, &FileService::saveData);
     files.exposeModel();
     w.enableDragDrop(true);
     w.show();

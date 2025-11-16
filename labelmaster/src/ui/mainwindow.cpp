@@ -1,8 +1,7 @@
 #include "mainwindow.hpp"
 #include "logger/core.hpp"
-
-#include "service/file.hpp"
 #include "ui/image_canvas.hpp"
+#include "ui/settings_dialog.hpp"
 #include "ui/stas_dialog.h"
 #include <QAction>
 #include <QApplication>
@@ -76,11 +75,15 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 /* ---------------- 外部输入（更新 UI） ---------------- */
+void MainWindow::showSettingDialog() {
+    ui::SettingsDialog* dialog = new SettingsDialog(this);
+    dialog->show();
+}
 void MainWindow::showStasDialog() {
     ui::StasDialog* dialog = new ui::StasDialog(this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(dialog, &ui::StasDialog::getStasRequested, this, &ui::MainWindow::sigGetStasRequested);
-    connect(this, &ui::MainWindow::sigStasUpdateRequested , dialog, &ui::StasDialog::updateStasData );
+    connect(this, &ui::MainWindow::sigStasUpdateRequested, dialog, &ui::StasDialog::updateStasData);
     dialog->show();
 }
 void MainWindow::showImage(const QImage& img) {
@@ -326,10 +329,10 @@ void MainWindow::setupActions() {
 void MainWindow::wireButtonsToActions() {
     connect(ui_->open_folder_button, &QPushButton::clicked, ui_->actionOpen, &QAction::trigger);
     connect(ui_->smart_button, &QPushButton::clicked, ui_->actionSmart, &QAction::trigger);
-    connect(ui_->previous_button, &QPushButton::clicked, ui_->actionPrev, &QAction::trigger);
+    connect(ui_->prev_pic, &QPushButton::clicked, ui_->actionPrev, &QAction::trigger);
     connect(ui_->next_pic, &QPushButton::clicked, ui_->actionNext, &QAction::trigger);
     connect(ui_->histogram_button, &QPushButton::clicked, ui_->actionHistEq, &QAction::trigger);
     connect(ui_->delete_button, &QPushButton::clicked, ui_->actionDelete, &QAction::trigger);
     connect(ui_->save_button, &QPushButton::clicked, ui_->actionSave, &QAction::trigger);
-    connect(ui_->pushButton, &QPushButton::clicked, ui_->actionSettings, &QAction::trigger);
+    connect(ui_->setttings_button, &QPushButton::clicked, ui_->actionSettings, &QAction::trigger);
 }

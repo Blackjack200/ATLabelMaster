@@ -23,6 +23,7 @@
 #include <qdir.h>
 #include <qglobal.h>
 #include <qhashfunctions.h>
+#include <qimage.h>
 #include <qiodevicebase.h>
 #include <qlist.h>
 #include <qmath.h>
@@ -438,7 +439,7 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                                 if (!StringProcess::processLabelString(raw, t)) {
                                     continue;
                                 }
-                                
+
                                 for (int i = 2; i > 0; i--) {
                                     t.move(t.size() - i, 0);
                                 }
@@ -758,7 +759,7 @@ QVector<Armor> FileService::readLabelFile(const QString& labelPath, const QSize&
 }
 
 // ---------- 保存标注（对外槽） ----------
-void FileService::saveLabels(const QVector<Armor>& armors) {
+void FileService::saveData(const QVector<Armor>& armors, const QImage& image) {
     if (!pendingDir_.isEmpty()) {
         emit status(tr("目录加载中，稍后保存"), 900);
         return;
@@ -788,7 +789,17 @@ void FileService::saveLabels(const QVector<Armor>& armors) {
             return;
         }
     }
-
+    // 保存图片
+    if (image.save(imgPath)) {
+        emit status(tr("已保存图片：%1").arg(QFileInfo(imgPath).fileName()), 900);
+        LOGI(QString("保存图片：%1").arg(imgPath));
+        return;
+    } else {
+        emit status(tr("保存图片失败"), 1200);
+        LOGE(QString("保存图片失败：%1").arg(imgPath));
+        return;
+    }
+    // 保存标注
     const QString lblPath = labelFileForImage(imgPath);
 
     if (writeLabelFile(lblPath, armors, sz)) {
