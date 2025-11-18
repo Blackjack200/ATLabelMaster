@@ -3,8 +3,10 @@
 #include "ui_settings_dialog.h"
 #include <qdialog.h>
 #include <qfiledialog.h>
+#include <qglobal.h>
 #include <qnamespace.h>
 #include <qobject.h>
+#include <qvariant.h>
 #include <qwidget.h>
 using namespace ui;
 SettingsDialog::SettingsDialog(QWidget* parent)
@@ -14,23 +16,80 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     this->setWindowTitle("Settings");
     this->ui_->dataset_dir_edit->setText(controller::AppSettings::instance().saveDir());
     this->ui_->last_img_dir_edit->setText(controller::AppSettings::instance().lastImageDir());
+    this->ui_->last_img_path_edit->setText(controller::AppSettings::instance().lastImagePath());
     this->ui_->auto_save_checkbox->setChecked(controller::AppSettings::instance().autoSave());
+    this->ui_->auto_enhance_checkbox->setChecked(
+        controller::AppSettings::instance().autoEnhanceV());
+    this->ui_->v_rate_slider->setValue(controller::AppSettings::instance().vRate() * 10);
+    this->ui_->v_rate_label->setText(
+        QString::number(controller::AppSettings::instance().vRate(), 'f', 1));
     this->ui_->fix_roi_checkbox->setChecked(controller::AppSettings::instance().fixedRoi());
     this->ui_->roi_h_spin->setValue(controller::AppSettings::instance().roiH());
     this->ui_->roi_w_spin->setValue(controller::AppSettings::instance().roiW());
-}
-void SettingsDialog::setSaveDir() {
-    const QString str = QFileDialog::getExistingDirectory();
-    controller::AppSettings::instance().setsaveDir(str);
     update();
+    connect(
+        this->ui_->dataset_dir_edit, &QLineEdit::editingFinished, this,
+        &SettingsDialog::setSaveDir);
+    connect(
+        this->ui_->last_img_dir_edit, &QLineEdit::editingFinished, this,
+        &SettingsDialog::setLastImageDir);
+    connect(
+        this->ui_->last_img_path_edit, &QLineEdit::editingFinished, this,
+        &SettingsDialog::setLastImagePath);
+    connect(this->ui_->auto_save_checkbox, &QCheckBox::toggled, this, &SettingsDialog::setAutoSave);
+    connect(
+        this->ui_->auto_enhance_checkbox, &QCheckBox::toggled, this,
+        &SettingsDialog::setAutoEnhanceV);
+    connect(this->ui_->v_rate_slider, &QSlider::valueChanged, this, &SettingsDialog::setVRate);
+    connect(this->ui_->fix_roi_checkbox, &QCheckBox::toggled, this, &SettingsDialog::setFixedRoi);
+    connect(this->ui_->roi_h_spin, &QSpinBox::editingFinished, this, &SettingsDialog::setRoiH);
+    connect(this->ui_->roi_w_spin, &QSpinBox::editingFinished, this, &SettingsDialog::setRoiW);
+}
+void SettingsDialog::SaveDirEditUpdate() {
+    const QString str = QFileDialog::getExistingDirectory();
+    if (!str.isEmpty()) {
+        this->ui_->dataset_dir_edit->setText(str);
+        setSaveDir();
+    }
+}
+void SettingsDialog::LastImageDirEditUpdate() {
+    const QString str = QFileDialog::getExistingDirectory();
+    if (!str.isEmpty()) {
+        this->ui_->last_img_dir_edit->setText(str);
+        setLastImageDir();
+    }
+}
+void SettingsDialog::LastImagePathEditUpdate() {
+    const QString str = QFileDialog::getOpenFileName();
+    if (!str.isEmpty()) {
+        this->ui_->last_img_path_edit->setText(str);
+        setLastImagePath();
+    }
 }
 void SettingsDialog::setLastImageDir() {
-    const QString str = QFileDialog::getExistingDirectory();
-    controller::AppSettings::instance().setsaveDir(str);
+    controller::AppSettings::instance().setlastImageDir(this->ui_->last_img_dir_edit->text());
+    update();
+}
+void SettingsDialog::setLastImagePath() {
+    controller::AppSettings::instance().setlastImagePath(this->ui_->last_img_path_edit->text());
+    update();
+}
+void SettingsDialog::setSaveDir() {
+    controller::AppSettings::instance().setsaveDir(this->ui_->dataset_dir_edit->text());
     update();
 }
 void SettingsDialog::setAutoSave(bool isAutoSave) {
     controller::AppSettings::instance().setautoSave(isAutoSave);
+    update();
+}
+void SettingsDialog::setAutoEnhanceV(bool isAutoSave) {
+    controller::AppSettings::instance().setautoSave(isAutoSave);
+    update();
+}
+void SettingsDialog::setVRate(int vRate) {
+    controller::AppSettings::instance().setvRate(static_cast<float>(vRate) / 10);
+    this->ui_->v_rate_label->setText(
+        QString::number(controller::AppSettings::instance().vRate(), 'f', 1));
     update();
 }
 void SettingsDialog::setFixedRoi(bool isFixedRoi) {

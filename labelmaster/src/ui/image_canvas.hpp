@@ -6,6 +6,7 @@
 #include <QRect>
 #include <QString>
 #include <QVector>
+#include <opencv2/objdetect.hpp>
 #include <qglobal.h>
 #include <qimage.h>
 #include <qlist.h>
@@ -76,11 +77,11 @@ signals:
     void annotationCommitted(const Armor&);
 
     // 选中/悬停/更新/删除
-    void detectionSelected(int index);              // -1 无选中
-    void detectionHovered(int index);               // -1 无悬停
-    void detectionUpdated(int index, const Armor&); // 类别或点被改
+    void detectionSelected(int index);                           // -1 无选中
+    void detectionHovered(int index);                            // -1 无悬停
+    void detectionUpdated(int index, const Armor&);              // 类别或点被改
     void detectionUpdated(QVector<int> indexList, const Armor&); // 类别或点被改
-    void detectionRemoved(int index);               // 删除哪个
+    void detectionRemoved(int index);                            // 删除哪个
 
     // 批量发布（供外部保存）
     void annotationsPublished(const QVector<Armor>& armors, const QImage& image);
@@ -102,6 +103,7 @@ private:
     int hitHandleOnSelected(const QPoint& wpos) const; // 命中当前“选中目标”的角点
     int hitDetectionStrict(const QPoint& wpos) const;  // 严格在框内才算命中
     bool pointInsidePolyW(const QPolygonF& polyW, const QPointF& w) const;
+    int hitMaskStrict(const QPoint& wpos) const;       // 命中Mask区域
     // 编辑颜色和类别
     void promptEditSelectedInfo(bool isCurrent = false);
     void updateFitRect();
@@ -118,7 +120,8 @@ private:
     void drawDragRect(QPainter& p) const;   // 拖框预览
     void drawSvg(QPainter& p, const QVector<Armor>& armors) const;
     // 绘制Mask
-    void drawMask(const QRect& recgt);
+    void clearMasks(); // 清空Masks
+    void drawMasks(const QVector<QRect> rect, QPainter& painter, bool isToWidget = true) const;
 
     // ROI 交互
     void beginFreeRoi(const QPoint& wpos);
@@ -129,10 +132,11 @@ private:
     // 直方图均衡化
 
 private:
-    // 图像
+    // 原图像
     QImage raw_img;
-    // 处理后图像
+    // 实际显示和Mask处理的图像
     QImage img_;
+
     QString imgPath_;
 
     // 视图
@@ -157,6 +161,10 @@ private:
     QVector<Armor> dets_;
     int selectedIndex_ = -1;
     int hoverIndex_    = -1;
+    // Mask信息
+    QVector<QRect> maskRects_;
+    // 亮度提升
+    bool enhanceV_ = false;
 
     // 新增/编辑状态（正常状态内的细分）
     bool isMaskMode    = false; // 是否为绘制Mask模式
@@ -170,7 +178,6 @@ private:
     QString currentClass_;
     QString currentColor_;
     QHash<QString, QSvgRenderer*> svgCache_;
-    // Mask
 
     // 参数
     const double kMinScale_  = 0.2;

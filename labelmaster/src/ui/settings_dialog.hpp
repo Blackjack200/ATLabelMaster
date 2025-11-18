@@ -8,24 +8,29 @@
 #include <qwidget.h>
 namespace ui {
 class SettingsDialog : public QDialog {
-        Q_OBJECT
-    public:
-        SettingsDialog(QWidget* parent = nullptr);
-        
+    Q_OBJECT
+public:
+    SettingsDialog(QWidget* parent = nullptr);
 
-    private:
-        Ui::SettingsDialog* ui_;
-    private slots:
-        void accept() { this->done(1); }
-        void reject() { this->done(1); }
-    public slots:
-        // void saveSettings();
-        void setLastImageDir(); //上次图片目录
-        void setSaveDir();//Label保存目录
-        void setAutoSave(bool isAutoSave);//自动保存
-        void setFixedRoi(bool isFixedRoi); //设置固定ROI
-        void setRoiH();
-        void setRoiW();
-    };
+private:
+    Ui::SettingsDialog* ui_;
+private slots:
+    void accept() { this->done(1); }
+    void reject() { this->done(1); }
+public slots:
+    void SaveDirEditUpdate();                  // Label保存目录
+    void LastImageDirEditUpdate();             // 上次图片目录
+    void LastImagePathEditUpdate();
+    void setLastImageDir();                    // 上次图片目录
+    void setLastImagePath();                   // 上次图片路径
+    void setSaveDir();                         // Label保存目录
+    void setAutoSave(bool isAutoSave);         // 自动保存
+    void setAutoEnhanceV(bool isAutoEnhanceV); // 自动增强
+    void setVRate(int vRate);                  // 增强倍数
+    void setFixedRoi(bool isFixedRoi);         // 设置固定ROI(decrepated)
+    void setRoiH();                            // 设置ROI高度(decrepated)
+    void setRoiW();                            // 设置ROI宽度(decrepated)
+    void resotre();                            // 恢复默认值
+};
 
 } // namespace ui

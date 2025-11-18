@@ -22,6 +22,7 @@
 #include <array>
 #include <opencv2/core.hpp>
 #include <opencv2/core/mat.hpp>
+#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
 #include <qbrush.h>
@@ -40,6 +41,7 @@
 #include <qsize.h>
 #include <qtmetamacros.h>
 #include <qvariant.h>
+#include <ranges>
 #include <type_traits>
 #include <vector>
 
@@ -97,7 +99,9 @@ bool ImageCanvas::loadImage(const QString& path) {
 void ImageCanvas::setImage(const QImage& img) {
     raw_img = img_ = img;
     imgPath_.clear();
-
+    enhanceV_ = false;
+    // 清空Masks
+    clearMasks();
     // 切图即清空标注
     clearDetections();
     selectedIndex_ = -1;
@@ -157,10 +161,15 @@ void ImageCanvas::resetView() {
 /* ===== 检测请求 ===== */
 void ImageCanvas::requestDetect() {
     const QImage crop = cropRoi();
-    if (!crop.isNull())
+    if (!crop.isNull()) {
         emit detectRequested(crop);
-    else
-        emit detectRequested(img_);
+    } else {
+        // 绘制Masks
+        QImage temp_img = img_.copy();
+        QPainter p(&temp_img);
+        drawMasks(maskRects_, p, false);
+        emit detectRequested(temp_img);
+    }
 }
 
 /* ===== 外部读写 ===== */
@@ -265,7 +274,7 @@ void ImageCanvas::paintEvent(QPaintEvent*) {
     const QRectF R = imageRectOnWidget();
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     p.drawImage(R, img_);
-
+    drawMasks(maskRects_, p);             // <<< 新增：绘制Mask
     drawDetections(p);
     drawRoi(p);
     drawSvg(p, dets_);
@@ -290,19 +299,29 @@ void ImageCanvas::drawDragRect(QPainter& p) const {
     p.drawRect(rw);
     p.restore();
 }
-void ImageCanvas::drawMask(const QRect& rect) {
-    QPainter p;
-    p.begin(&img_);
+void ImageCanvas::drawMasks(const QVector<QRect> rects, QPainter& painter, bool isToWidget) const {
+    painter.save();
     QPen pen;
     pen.setColor(QColorConstants::Black);
     pen.setWidth(1);
-    p.setPen(pen);
     QBrush brush;
     brush.setColor(QColorConstants::Black);
     brush.setStyle(Qt::SolidPattern);
-    p.setBrush(brush);
-    p.drawRect(rect);
+    painter.setPen(pen);
+    painter.setBrush(brush);
+    if (isToWidget) {
+        for (QRect rect : rects) {
+            QPolygonF poly;
+            poly << imageToWidget(rect.topLeft()) << imageToWidget(rect.bottomLeft())
+                 << imageToWidget(rect.bottomRight()) << imageToWidget(rect.topRight());
+            painter.drawPolygon(poly);
+        }
+    } else {
+        painter.drawRects(rects);
+    }
+    painter.restore();
 }
+void ImageCanvas::clearMasks() { maskRects_.clear(); }
 
 void ImageCanvas::drawDetections(QPainter& p) const {
     if (dets_.isEmpty())
@@ -427,32 +446,56 @@ void ImageCanvas::drawCrosshair(QPainter& p) const {
 }
 // 直方图均衡化
 void ImageCanvas::histEqualize() {
-    cv::Mat res = qimageToMat(raw_img);
-    std::vector<cv::Mat> channels;
-    // 像素值
-    //  res.convertTo(res, -1, 2.2, 50);
-    // 直方图均衡化
-    //  cv::cvtColor(res, res, cv::COLOR_BGR2YCrCb);
-    //  cv::split(res, channels);
-    //  cv::equalizeHist(channels[0], channels[0]);
-    //  cv::merge(channels, res);
-    //  cv::cvtColor(res, res, cv::COLOR_YCrCb2RGB);
-    // 伽马矫正
-    auto createGammaLookUpTable = [](double gamma) {
-        cv::Mat lookUpTable(1, 256, CV_8U);
-        uchar* p = lookUpTable.ptr();
-        for (int i = 0; i < 256; ++i) {
-            // I_out = 255 * (I_in / 255)^gamma
-            p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, gamma) * 255.0);
-        }
-        return lookUpTable;
-    };
-    double gamma        = 0.4;
-    cv::Mat lookUpTable = createGammaLookUpTable(gamma);
-    // 使用 LUT 函数进行伽马校正，并将结果存储在 res 中
-    LUT(res, lookUpTable, res);
-    cv::cvtColor(res, res, cv::COLOR_BGR2RGB);
-    img_ = QImage(res.data, res.cols, res.rows, res.step, QImage::Format_RGB888).copy();
+    if (enhanceV_) {
+        img_ = raw_img;
+    } else {
+        cv::Mat res = qimageToMat(raw_img);
+        cv::Mat channels[3];
+        // 像素值
+        //  res.convertTo(res, -1, 2.2, 50);
+        // 直方图均衡化       cv::Mat channel[4];
+        // cv::split(res, channels);
+        // cv::equalizeHist(channels[0], channels[0]);
+        // cv::equalizeHist(channels[1], channels[1]);
+        // cv::equalizeHist(channels[2], channels[2]);
+        // cv::merge(channels, 3, res);
+        // cv::cvtColor(res, res, cv::COLOR_BGR2RGB);
+        // 线性LUT函数
+        auto createLookUpTable = []() {
+            cv::Mat lookUpTable;
+            lookUpTable.Mat::create(1, 256, CV_8UC1);
+            for (int i = 0; i <= 255; i++) {
+                if (i * controller::AppSettings::instance().vRate() > 255)
+                    lookUpTable.at<uchar>(0, i) = 255;
+                else
+                    lookUpTable.at<uchar>(0, i) =
+                        uchar(round(controller::AppSettings::instance().vRate() * i));
+            }
+            return lookUpTable;
+        };
+        cv::cvtColor(res, res, cv::COLOR_BGR2HSV);
+        cv::split(res, channels);
+        cv::LUT(channels[2], createLookUpTable(), channels[2]);
+        cv::merge(channels, 3, res);
+        cv::cvtColor(res, res, cv::COLOR_HSV2RGB);
+        // 伽马矫正(非线性LUT函数)
+        // auto createGammaLookUpTable = [](double gamma) {
+        //     cv::Mat lookUpTable(1, 256, CV_8U);
+        //     uchar* p = lookUpTable.ptr();
+        //     for (int i = 0; i < 256; ++i) {
+        //         // I_out = 255 * (I_in / 255)^gamma
+        //         p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, gamma) * 255.0);
+        //     }
+        //     return lookUpTable;
+        // };
+        // double gamma        = 0.4;
+        // cv::Mat lookUpTable = createGammaLookUpTable(gamma);
+        // // 使用 LUT 函数进行伽马校正，并将结果存储在 res 中
+        // LUT(res, lookUpTable, res);
+        // cv::cvtColor(res, res, cv::COLOR_BGR2RGB);
+        img_ = QImage(res.data, res.cols, res.rows, res.step, QImage::Format_RGB888).copy();
+    }
+    enhanceV_ = !enhanceV_;
     update();
 }
 /* ===== 交互 ===== */
@@ -517,9 +560,15 @@ void ImageCanvas::mousePressEvent(QMouseEvent* e) {
         panning_ = true;
         setCursor(Qt::ClosedHandCursor);
     } else if (e->button() == Qt::RightButton) {
-        const int hit = hitDetectionStrict(e->pos());
+        const int hit = hitDetectionStrict(e->pos()); // 命中Detection
         if (hit >= 0) {
             removeDetection(hit);
+            update();
+            return;
+        }
+        const int hitMask = hitMaskStrict(e->pos());  // 命中Mask
+        if (hitMask >= 0) {
+            maskRects_.removeAt(hitMask);
             update();
             return;
         }
@@ -558,9 +607,10 @@ void ImageCanvas::mouseReleaseEvent(QMouseEvent* e) {
             if (!dragRectImg_.isNull()) {
                 const QRect r = clampRectToImage(dragRectImg_.normalized());
                 if (r.width() >= 2 && r.height() >= 2) {
-                    if (isMaskMode) { // 绘制Mask
-                        drawMask(r);
-                    } else {          // 画框
+                    if (isMaskMode) {         // 绘制Mask
+                        maskRects_.append(r); // 添加到Mask信息用于绘制
+                        dragRectImg_ = QRect();
+                    } else {                  // 画框
                         promptEditSelectedInfo(true);
                         // TL, BL, BR, TR  (CCW)
                     }
@@ -631,34 +681,46 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
             }
             qDebug() << A.p0 << " " << A.p1 << " " << A.p2 << " " << A.p3 << "\n";
         };
-        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行四绘制模式
+        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行绘制模式
             QPointF res;
-            res.setX(pi.x());
-            qreal ty;
+            res.setY(pi.y()); // <-- 现在固定 y，根据平行约束求 x
+            qreal tx;
+
             switch (dragHandle_) {
-            case 0: {
-                const QPointF t = A.p2 - A.p1;
-                ty              = A.p3.y() + (t.y() / t.x()) * (A.p3.x() - A.p0.x());
+            case 0: {         // p0：左上 —— 和右边 p3→p2 平行
+                const QPointF t = A.p3 - A.p2;
+                tx              = A.p1.x() + (t.x() / t.y()) * (A.p0.y() - A.p1.y());
                 break;
             }
-            case 1: {
-                const QPointF t = A.p3 - A.p0;
-                ty              = A.p2.y() - (t.y() / t.x()) * (A.p2.x() - A.p1.x());
+            case 1: {         // p1：左下 —— 和右边 p3→p2 平行
+                const QPointF t = A.p3 - A.p2;
+                tx              = A.p0.x() + (t.x() / t.y()) * (A.p1.y() - A.p0.y());
                 break;
             }
-            case 2: {
-                const QPointF t = A.p3 - A.p0;
-                ty              = A.p1.y() + (t.y() / t.x()) * (A.p2.x() - A.p1.x());
+            case 2: {         // p2：右下 —— 和左边 p0→p1 平行
+                const QPointF t = A.p0 - A.p1;
+                tx              = A.p3.x() + (t.x() / t.y()) * (A.p2.y() - A.p3.y());
                 break;
             }
-            case 3: {
-                const QPointF t = A.p2 - A.p1;
-                ty              = A.p0.y() + (t.y() / t.x()) * (A.p3.x() - A.p0.x());
+            case 3: {         // p3：右上 —— 和左边 p0→p1 平行
+                const QPointF t = A.p0 - A.p1;
+                tx              = A.p2.x() + (t.x() / t.y()) * (A.p3.y() - A.p2.y());
                 break;
             }
             }
-            res.setY(ty);
+
+            res.setX(tx);
             setPosByIndex(dragHandle_, res);
+        } else if (e->modifiers() == Qt::KeyboardModifier::ShiftModifier) { // 平行四边形绘制模式
+            int diagonP1       = dragHandle_ - 1;
+            int diagonP2       = dragHandle_ + 1;
+            int another        = dragHandle_ + 2;
+            diagonP1           = ensureBound(diagonP1);
+            diagonP2           = ensureBound(diagonP2);
+            another            = ensureBound(another);
+            QPointF anotherPos = getPosByIndex(diagonP1) + getPosByIndex(diagonP2) - pi;
+            setPosByIndex(another, anotherPos);
+            setPosByIndex(dragHandle_, pi);
         } else {
             setPosByIndex(dragHandle_, pi);
         }
@@ -807,6 +869,20 @@ int ImageCanvas::hitDetectionStrict(const QPoint& wpos) const {
         QPolygonF poly;
         poly << imageToWidget(d.p0) << imageToWidget(d.p1) << imageToWidget(d.p2)
              << imageToWidget(d.p3);
+        if (pointInsidePolyW(poly, w))
+            return i;
+    }
+    return -1;
+}
+int ImageCanvas::hitMaskStrict(const QPoint& wpos) const {
+    if (maskRects_.isEmpty())
+        return -1;
+    const QPointF w = wpos;
+    for (int i = maskRects_.size() - 1; i >= 0; --i) {
+        const QRect& d = maskRects_[i];
+        QPolygonF poly;
+        poly << imageToWidget(d.topLeft()) << imageToWidget(d.bottomLeft())
+             << imageToWidget(d.bottomRight()) << imageToWidget(d.topRight());
         if (pointInsidePolyW(poly, w))
             return i;
     }
@@ -984,8 +1060,10 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 }
 
 void ImageCanvas::requestSave() {
-    qDebug() << "requestSave called";
-    emit annotationsPublished(dets_, img_);
+    qDebug() << "requestSave called"; // 处理图片,绘制Mask
+    QPainter p(&raw_img);
+    drawMasks(maskRects_, p, false);
+    emit annotationsPublished(dets_, raw_img);
 }
 void ImageCanvas::ProcessInfoChanged(
     const QString& EditedClass, const QString& Color, bool isCurrent = false) {
