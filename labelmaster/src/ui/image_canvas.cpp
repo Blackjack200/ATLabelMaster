@@ -1,6 +1,9 @@
 #include "image_canvas.hpp"
+#include "../util/bridge.hpp"
 #include "controller/settings.hpp"
-
+#include "info_dialog.h"
+#include "mainwindow.hpp"
+#include <QDebug>
 #include <QFile>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -17,6 +20,30 @@
 #include <QtMath>
 #include <algorithm>
 #include <array>
+#include <opencv2/core.hpp>
+#include <opencv2/core/mat.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+#include <qbrush.h>
+#include <qcolor.h>
+#include <qdebug.h>
+#include <qeventloop.h>
+#include <qglobal.h>
+#include <qimage.h>
+#include <qinputdialog.h>
+#include <qlist.h>
+#include <qnamespace.h>
+#include <qobject.h>
+#include <qpainter.h>
+#include <qpen.h>
+#include <qpoint.h>
+#include <qsize.h>
+#include <qtmetamacros.h>
+#include <qvariant.h>
+#include <ranges>
+#include <type_traits>
+#include <vector>
 
 // ---------- JSON 工具 ----------
 static QJsonArray toJsonPt(const QPointF& p) { return QJsonArray{p.x(), p.y()}; }
@@ -70,9 +97,11 @@ bool ImageCanvas::loadImage(const QString& path) {
 }
 
 void ImageCanvas::setImage(const QImage& img) {
-    img_ = img;
+    raw_img = img_ = img;
     imgPath_.clear();
-
+    enhanceV_ = false;
+    // 清空Masks
+    clearMasks();
     // 切图即清空标注
     clearDetections();
     selectedIndex_ = -1;
@@ -90,6 +119,9 @@ void ImageCanvas::setImage(const QImage& img) {
         clearRoi();
     }
     resetView();
+    if (controller::AppSettings::instance().autoEnhanceV()) { // 切换图片时自动增强亮度
+        histEqualize();
+    }
     update();
 }
 
@@ -132,10 +164,15 @@ void ImageCanvas::resetView() {
 /* ===== 检测请求 ===== */
 void ImageCanvas::requestDetect() {
     const QImage crop = cropRoi();
-    if (!crop.isNull())
+    if (!crop.isNull()) {
         emit detectRequested(crop);
-    else
-        emit detectRequested(img_);
+    } else {
+        // 绘制Masks
+        QImage temp_img = img_.copy();
+        QPainter p(&temp_img);
+        drawMasks(maskRects_, p, false);
+        emit detectRequested(temp_img);
+    }
 }
 
 /* ===== 外部读写 ===== */
@@ -218,6 +255,15 @@ bool ImageCanvas::setSelectedClass(const QString& cls) {
     update();
     return true;
 }
+bool ImageCanvas::setSelectedInfo(const QString& cls, const QString& color) {
+    if (selectedIndex_ < 0 || selectedIndex_ >= dets_.size())
+        return false;
+    dets_[selectedIndex_].color = color.isEmpty() ? "Gray" : color;
+    dets_[selectedIndex_].cls   = cls.isEmpty() ? QStringLiteral("unknown") : cls;
+    emit detectionUpdated(selectedIndex_, dets_[selectedIndex_]);
+    update();
+    return true;
+}
 
 /* ===== 导入/导出 ===== */
 
@@ -231,12 +277,12 @@ void ImageCanvas::paintEvent(QPaintEvent*) {
     const QRectF R = imageRectOnWidget();
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     p.drawImage(R, img_);
-
+    drawMasks(maskRects_, p);             // <<< 新增：绘制Mask
     drawDetections(p);
     drawRoi(p);
     drawSvg(p, dets_);
-    drawDragRect(p); // <<< 新增：拖框时的虚线矩形
-    drawCrosshair(p);
+    drawDragRect(p);                      // <<< 新增：拖框时的虚线矩形
+    drawCrosshair(p);                     // 十字准心
 }
 
 void ImageCanvas::drawDragRect(QPainter& p) const {
@@ -256,28 +302,57 @@ void ImageCanvas::drawDragRect(QPainter& p) const {
     p.drawRect(rw);
     p.restore();
 }
+void ImageCanvas::drawMasks(const QVector<QRect> rects, QPainter& painter, bool isToWidget) const {
+    painter.save();
+    QPen pen;
+    pen.setColor(QColorConstants::Black);
+    pen.setWidth(1);
+    QBrush brush;
+    brush.setColor(QColorConstants::Black);
+    brush.setStyle(Qt::SolidPattern);
+    painter.setPen(pen);
+    painter.setBrush(brush);
+    if (isToWidget) {
+        for (QRect rect : rects) {
+            QPolygonF poly;
+            poly << imageToWidget(rect.topLeft()) << imageToWidget(rect.bottomLeft())
+                 << imageToWidget(rect.bottomRight()) << imageToWidget(rect.topRight());
+            painter.drawPolygon(poly);
+        }
+    } else {
+        painter.drawRects(rects);
+    }
+    painter.restore();
+}
+void ImageCanvas::clearMasks() { maskRects_.clear(); }
 
 void ImageCanvas::drawDetections(QPainter& p) const {
-    if (dets_.isEmpty()) return;
+    if (dets_.isEmpty())
+        return;
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setClipRect(imageRectOnWidget());
 
-    auto colorOf = [](const QString& c)->QColor {
-        if (c.isEmpty()) return QColor(0,200,255);
+    auto colorOf = [](const QString& c) -> QColor {
+        if (c.isEmpty())
+            return QColor(0, 200, 255);
         const QChar C = c.at(0).toUpper();
-        if (C=='R') return QColor(255, 70,  70);   // 红
-        if (C=='B') return QColor( 61,165,255);   // 蓝
-        if (C=='G') return QColor(170,170,180);   // 灰
-        if (C=='P') return QColor (255,192,203);   //紫
-        return QColor(0,200,255);
+        if (C == 'R')
+            return {255, 70, 70};         // 红
+        if (C == 'B')
+            return QColor(61, 165, 255);  // 蓝
+        if (C == 'G')
+            return QColor(170, 170, 180); // 灰
+        if (C == 'P')
+            return QColor(255, 192, 203); // 紫
+        return QColor(0, 200, 255);
     };
 
     for (int i = 0; i < dets_.size(); ++i) {
         const auto& d = dets_[i];
         QPolygonF poly;
-        poly << imageToWidget(d.p0) << imageToWidget(d.p1)
-             << imageToWidget(d.p2) << imageToWidget(d.p3);
+        poly << imageToWidget(d.p0) << imageToWidget(d.p1) << imageToWidget(d.p2)
+             << imageToWidget(d.p3);
 
         const bool isSel   = (i == selectedIndex_);
         const bool isHover = (i == hoverIndex_);
@@ -286,15 +361,14 @@ void ImageCanvas::drawDetections(QPainter& p) const {
         // 叠加填充（选中/悬停）
         if (isSel || isHover) {
             p.setPen(Qt::NoPen);
-            QColor fill = base; fill.setAlpha(isSel ? 60 : 45);
+            QColor fill = base;
+            fill.setAlpha(isSel ? 60 : 45);
             p.setBrush(fill);
             p.drawPolygon(poly);
         }
 
         // 轮廓
-        QPen pen = isSel ? QPen(base, 3)
-                         : isHover ? QPen(base.lighter(125), 3)
-                                   : QPen(base, 2);
+        QPen pen = isSel ? QPen(base, 3) : isHover ? QPen(base.lighter(125), 3) : QPen(base, 2);
         pen.setJoinStyle(Qt::MiterJoin);
         pen.setCapStyle(Qt::SquareCap);
         p.setPen(pen);
@@ -302,22 +376,27 @@ void ImageCanvas::drawDetections(QPainter& p) const {
         p.drawPolygon(poly);
 
         // 文本（描边 + 主色）
-        const QPointF tl = poly.boundingRect().topLeft();
+        const QPointF tl   = poly.boundingRect().topLeft();
         const QString text = QString("%1%2").arg(d.color).arg(d.cls);
-        QFont f = p.font(); f.setPointSizeF(f.pointSizeF() + 1);
+        QFont f            = p.font();
+        f.setPointSizeF(f.pointSizeF() + 1);
         p.setFont(f);
-        p.setPen(QPen(Qt::black, 4));                  // 外描边
+        p.setPen(QPen(Qt::black, 4));         // 外描边
         p.drawText(tl + QPointF(2, -2), text);
-        p.setPen(QPen(base.lighter(120), 1));          // 主色文字
+        p.setPen(QPen(base.lighter(120), 1)); // 主色文字
         p.drawText(tl + QPointF(2, -2), text);
 
         // 选中时角点
         if (isSel) {
             p.setPen(Qt::NoPen);
             for (int k = 0; k < 4; ++k) {
-                const QPointF w = imageToWidget(k==0?d.p0 : k==1?d.p1 : k==2?d.p2 : d.p3);
+                const QPointF w = imageToWidget(
+                    k == 0   ? d.p0
+                    : k == 1 ? d.p1
+                    : k == 2 ? d.p2
+                             : d.p3);
                 const bool hot = (k == hoverHandle_ || k == dragHandle_);
-                QColor c = hot ? base.lighter(120) : base;
+                QColor c       = hot ? base.lighter(120) : base;
                 p.setBrush(c);
                 p.drawEllipse(w, kHandleRadius_, kHandleRadius_);
             }
@@ -368,7 +447,60 @@ void ImageCanvas::drawCrosshair(QPainter& p) const {
     p.drawLine(QPoint(int(R.left()), mousePosW_.y()), QPoint(int(R.right()), mousePosW_.y()));
     p.restore();
 }
-
+// 直方图均衡化
+void ImageCanvas::histEqualize() {
+    if (enhanceV_) {
+        img_ = raw_img;
+    } else {
+        cv::Mat res = qimageToMat(raw_img);
+        cv::Mat channels[3];
+        // 像素值
+        //  res.convertTo(res, -1, 2.2, 50);
+        // 直方图均衡化       cv::Mat channel[4];
+        // cv::split(res, channels);
+        // cv::equalizeHist(channels[0], channels[0]);
+        // cv::equalizeHist(channels[1], channels[1]);
+        // cv::equalizeHist(channels[2], channels[2]);
+        // cv::merge(channels, 3, res);
+        // cv::cvtColor(res, res, cv::COLOR_BGR2RGB);
+        // 线性LUT函数
+        auto createLookUpTable = []() {
+            cv::Mat lookUpTable;
+            lookUpTable.Mat::create(1, 256, CV_8UC1);
+            for (int i = 0; i <= 255; i++) {
+                if (i * controller::AppSettings::instance().vRate() > 255)
+                    lookUpTable.at<uchar>(0, i) = 255;
+                else
+                    lookUpTable.at<uchar>(0, i) =
+                        uchar(round(controller::AppSettings::instance().vRate() * i));
+            }
+            return lookUpTable;
+        };
+        cv::cvtColor(res, res, cv::COLOR_BGR2HSV);
+        cv::split(res, channels);
+        cv::LUT(channels[2], createLookUpTable(), channels[2]);
+        cv::merge(channels, 3, res);
+        cv::cvtColor(res, res, cv::COLOR_HSV2RGB);
+        // 伽马矫正(非线性LUT函数)
+        // auto createGammaLookUpTable = [](double gamma) {
+        //     cv::Mat lookUpTable(1, 256, CV_8U);
+        //     uchar* p = lookUpTable.ptr();
+        //     for (int i = 0; i < 256; ++i) {
+        //         // I_out = 255 * (I_in / 255)^gamma
+        //         p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, gamma) * 255.0);
+        //     }
+        //     return lookUpTable;
+        // };
+        // double gamma        = 0.4;
+        // cv::Mat lookUpTable = createGammaLookUpTable(gamma);
+        // // 使用 LUT 函数进行伽马校正，并将结果存储在 res 中
+        // LUT(res, lookUpTable, res);
+        // cv::cvtColor(res, res, cv::COLOR_BGR2RGB);
+        img_ = QImage(res.data, res.cols, res.rows, res.step, QImage::Format_RGB888).copy();
+    }
+    enhanceV_ = !enhanceV_;
+    update();
+}
 /* ===== 交互 ===== */
 void ImageCanvas::wheelEvent(QWheelEvent* e) {
     if (img_.isNull()) {
@@ -392,29 +524,34 @@ void ImageCanvas::mousePressEvent(QMouseEvent* e) {
     lastMousePos_ = e->pos();
     mousePosW_    = e->pos();
     mouseInside_  = rect().contains(mousePosW_);
-
     if (e->button() == Qt::LeftButton) {
-        // 1) 若有选中，优先检测角点拖动
-        if (selectedIndex_ >= 0 && selectedIndex_ < dets_.size()) {
-            hoverHandle_ = hitHandleOnSelected(e->pos());
-            if (hoverHandle_ >= 0) {
-                dragHandle_ = hoverHandle_;
+        if ((e->modifiers() & Qt::ControlModifier)) { // 绘制Mask
+            // 绘制Mask不需要判断1, 2
+            isMaskMode = true;
+
+        } else {
+            isMaskMode = false;
+            // 1) 若有选中，优先检测角点拖动
+            if (selectedIndex_ >= 0 && selectedIndex_ < dets_.size()) {
+                hoverHandle_ = hitHandleOnSelected(e->pos());
+                if (hoverHandle_ >= 0) {
+                    dragHandle_ = hoverHandle_;
+                    update();
+                    return;
+                }
+            }
+
+            // 2) 命中已有目标 → 选中，不画框
+            const int hit = hitDetectionStrict(e->pos());
+            if (hit >= 0) {
+                if (selectedIndex_ != hit) {
+                    selectedIndex_ = hit;
+                    emit detectionSelected(selectedIndex_);
+                }
                 update();
                 return;
             }
         }
-
-        // 2) 命中已有目标 → 选中，不画框
-        const int hit = hitDetectionStrict(e->pos());
-        if (hit >= 0) {
-            if (selectedIndex_ != hit) {
-                selectedIndex_ = hit;
-                emit detectionSelected(selectedIndex_);
-            }
-            update();
-            return;
-        }
-
         // 3) 空白 → 开始画新框
         draggingRect_   = true;
         dragRectStartW_ = e->pos();
@@ -426,9 +563,15 @@ void ImageCanvas::mousePressEvent(QMouseEvent* e) {
         panning_ = true;
         setCursor(Qt::ClosedHandCursor);
     } else if (e->button() == Qt::RightButton) {
-        const int hit = hitDetectionStrict(e->pos());
+        const int hit = hitDetectionStrict(e->pos()); // 命中Detection
         if (hit >= 0) {
             removeDetection(hit);
+            update();
+            return;
+        }
+        const int hitMask = hitMaskStrict(e->pos());  // 命中Mask
+        if (hitMask >= 0) {
+            maskRects_.removeAt(hitMask);
             update();
             return;
         }
@@ -440,7 +583,25 @@ void ImageCanvas::mousePressEvent(QMouseEvent* e) {
         return;
     }
 }
-
+void ImageCanvas::createNewDetection() { // 画框
+    const QRect r = clampRectToImage(dragRectImg_.normalized());
+    Armor a;
+    a.p0          = QPointF(r.left(), r.top());
+    a.p1          = QPointF(r.left(), r.bottom());
+    a.p2          = QPointF(r.right(), r.bottom());
+    a.p3          = QPointF(r.right(), r.top());
+    a.cls         = currentClass_.isEmpty() ? QStringLiteral("unknown") : currentClass_;
+    a.color       = currentColor_.isEmpty() ? QStringLiteral("G") : currentColor_;
+    currentClass_ = "";
+    currentColor_ = "";
+    dets_.append(a);
+    emit annotationCommitted(a);
+    emit detectionUpdated(dets_.size() - 1, a);
+    selectedIndex_ = dets_.size() - 1;
+    emit detectionSelected(selectedIndex_);
+    dragRectImg_ = QRect();
+    update();
+}
 void ImageCanvas::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
         // A. 结束画框 → 立刻新增
@@ -449,23 +610,15 @@ void ImageCanvas::mouseReleaseEvent(QMouseEvent* e) {
             if (!dragRectImg_.isNull()) {
                 const QRect r = clampRectToImage(dragRectImg_.normalized());
                 if (r.width() >= 2 && r.height() >= 2) {
-                    Armor a;
-                    a.cls = currentClass_.isEmpty() ? QStringLiteral("unknown") : currentClass_;
-                    // TL, BL, BR, TR  (CCW)
-                    a.p0 = QPointF(r.left(), r.top());
-                    a.p1 = QPointF(r.left(), r.bottom());
-                    a.p2 = QPointF(r.right(), r.bottom());
-                    a.p3 = QPointF(r.right(), r.top());
-
-                    dets_.append(a);
-                    emit annotationCommitted(a);
-                    emit detectionUpdated(dets_.size() - 1, a);
-                    selectedIndex_ = dets_.size() - 1;
-                    emit detectionSelected(selectedIndex_);
+                    if (isMaskMode) {         // 绘制Mask
+                        maskRects_.append(r); // 添加到Mask信息用于绘制
+                        dragRectImg_ = QRect();
+                    } else {                  // 画框
+                        promptEditSelectedInfo(true);
+                        // TL, BL, BR, TR  (CCW)
+                    }
                 }
             }
-            dragRectImg_ = QRect();
-            update();
             return;
         }
 
@@ -480,8 +633,7 @@ void ImageCanvas::mouseReleaseEvent(QMouseEvent* e) {
 
         if (draggingRoi_)
             endFreeRoi();
-    }
-    if (e->button() == Qt::MiddleButton && panning_) {
+    } else if (e->button() == Qt::MiddleButton && panning_) {
         panning_ = false;
         setCursor(Qt::ArrowCursor);
     }
@@ -490,7 +642,7 @@ void ImageCanvas::mouseReleaseEvent(QMouseEvent* e) {
 void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
     mousePosW_   = e->pos();
     mouseInside_ = rect().contains(mousePosW_);
-
+    // 拖动图片
     if (panning_) {
         const QPoint d = e->pos() - lastMousePos_;
         pan_ += d;
@@ -498,7 +650,7 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
         update();
         return;
     }
-
+    // 绘制辅助框
     if (draggingRect_) {
         QPoint a     = widgetToImage(dragRectStartW_).toPoint();
         QPoint b     = widgetToImage(e->pos()).toPoint();
@@ -506,18 +658,77 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
         update();
         return;
     }
-
+    // 拖动角点
     if (dragHandle_ >= 0 && selectedIndex_ >= 0 && selectedIndex_ < dets_.size()) {
-        auto& A          = dets_[selectedIndex_];
-        const QPointF pi = widgetToImage(e->pos());
-        switch (dragHandle_) {
-        case 0: A.p0 = pi; break;
-        case 1: A.p1 = pi; break;
-        case 2: A.p2 = pi; break;
-        case 3: A.p3 = pi; break;
+        auto& A                = dets_[selectedIndex_];
+        const QPointF pi       = widgetToImage(e->pos());
+        const auto ensureBound = [](int index) {
+            index = index > 3 ? index - 4 : index;
+            index = index < 0 ? 4 + index : index;
+            return index;
+        };
+        const auto getPosByIndex = [&](const int& index) {
+            switch (index) {
+            case 0: return A.p0;
+            case 1: return A.p1;
+            case 2: return A.p2;
+            default: return A.p3;
+            }
+        };
+        const auto setPosByIndex = [&](const int& index, const QPointF& point) {
+            switch (index) {
+            case 0: A.p0 = point; break;
+            case 1: A.p1 = point; break;
+            case 2: A.p2 = point; break;
+            default: A.p3 = point;
+            }
+            qDebug() << A.p0 << " " << A.p1 << " " << A.p2 << " " << A.p3 << "\n";
+        };
+        if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行绘制模式
+            QPointF res;
+            res.setY(pi.y()); // <-- 现在固定 y，根据平行约束求 x
+            qreal tx;
+
+            switch (dragHandle_) {
+            case 0: {         // p0：左上 —— 和右边 p3→p2 平行
+                const QPointF t = A.p3 - A.p2;
+                tx              = A.p1.x() + (t.x() / t.y()) * (A.p0.y() - A.p1.y());
+                break;
+            }
+            case 1: {         // p1：左下 —— 和右边 p3→p2 平行
+                const QPointF t = A.p3 - A.p2;
+                tx              = A.p0.x() + (t.x() / t.y()) * (A.p1.y() - A.p0.y());
+                break;
+            }
+            case 2: {         // p2：右下 —— 和左边 p0→p1 平行
+                const QPointF t = A.p0 - A.p1;
+                tx              = A.p3.x() + (t.x() / t.y()) * (A.p2.y() - A.p3.y());
+                break;
+            }
+            case 3: {         // p3：右上 —— 和左边 p0→p1 平行
+                const QPointF t = A.p0 - A.p1;
+                tx              = A.p2.x() + (t.x() / t.y()) * (A.p3.y() - A.p2.y());
+                break;
+            }
+            }
+
+            res.setX(tx);
+            setPosByIndex(dragHandle_, res);
+        } else if (e->modifiers() == Qt::KeyboardModifier::ShiftModifier) { // 平行四边形绘制模式
+            int diagonP1       = dragHandle_ - 1;
+            int diagonP2       = dragHandle_ + 1;
+            int another        = dragHandle_ + 2;
+            diagonP1           = ensureBound(diagonP1);
+            diagonP2           = ensureBound(diagonP2);
+            another            = ensureBound(another);
+            QPointF anotherPos = getPosByIndex(diagonP1) + getPosByIndex(diagonP2) - pi;
+            setPosByIndex(another, anotherPos);
+            setPosByIndex(dragHandle_, pi);
+        } else {
+            setPosByIndex(dragHandle_, pi);
         }
         // 不在移动中重排，避免把当前拖拽句柄“换角”
-        emit detectionUpdated(selectedIndex_, A);
+        emit detectionUpdated(selectedIndex_, dets_[selectedIndex_]);
         update();
         return;
     }
@@ -538,14 +749,14 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
 
     update(); // 始终刷新（十字线/轻微移动也更新）
 }
-
+// 编辑颜色和类别
 void ImageCanvas::mouseDoubleClickEvent(QMouseEvent* e) {
     if (e->button() != Qt::LeftButton)
         return;
     const int hit = hitDetectionStrict(e->pos());
     if (hit >= 0) {
         setSelectedIndex(hit);
-        promptEditSelectedClass();
+        promptEditSelectedInfo();
     }
 }
 
@@ -556,7 +767,7 @@ void ImageCanvas::keyPressEvent(QKeyEvent* e) {
     }
 
     if (e->key() == Qt::Key_F2 || e->key() == Qt::Key_C) {
-        promptEditSelectedClass();
+        promptEditSelectedInfo();
         e->accept();
         return;
     }
@@ -666,6 +877,20 @@ int ImageCanvas::hitDetectionStrict(const QPoint& wpos) const {
     }
     return -1;
 }
+int ImageCanvas::hitMaskStrict(const QPoint& wpos) const {
+    if (maskRects_.isEmpty())
+        return -1;
+    const QPointF w = wpos;
+    for (int i = maskRects_.size() - 1; i >= 0; --i) {
+        const QRect& d = maskRects_[i];
+        QPolygonF poly;
+        poly << imageToWidget(d.topLeft()) << imageToWidget(d.bottomLeft())
+             << imageToWidget(d.bottomRight()) << imageToWidget(d.topRight());
+        if (pointInsidePolyW(poly, w))
+            return i;
+    }
+    return -1;
+}
 bool ImageCanvas::pointInsidePolyW(const QPolygonF& polyW, const QPointF& w) const {
     return polyW.containsPoint(w, Qt::WindingFill);
 }
@@ -702,15 +927,26 @@ void ImageCanvas::placeFixedRoiAt(const QPoint& wpos) {
 }
 
 /* ===== UI 帮助 ===== */
-void ImageCanvas::promptEditSelectedClass() {
-    if (selectedIndex_ < 0 || selectedIndex_ >= dets_.size())
-        return;
-    const QString oldCls = dets_[selectedIndex_].cls;
-    bool ok              = false;
-    const QString cls    = QInputDialog::getText(
-        this, tr("Edit Class"), tr("Class label:"), QLineEdit::Normal, oldCls, &ok);
-    if (ok)
-        setSelectedClass(cls.trimmed());
+void ImageCanvas::promptEditSelectedInfo(bool isCurrent) {
+    if (!isCurrent) {
+        if (selectedIndex_ < 0 || selectedIndex_ >= dets_.size())
+            return;
+    }
+    // const QString oldCls = dets_[selectedIndex_].cls;
+    // bool ok              = false;
+    // const QString cls    = QInputDialog::getText(
+    //     this, tr("Edit Class"), tr("Class label:"), QLineEdit::Normal, oldCls, &ok);
+    // if (ok)
+    //     setSelectedClass(cls.trimmed());
+    ui::InfoDialog* dialog = new ui::InfoDialog(this);
+    connect(dialog, &ui::InfoDialog::InfoGetted, this, &ImageCanvas::ProcessInfoChanged);
+    if (isCurrent) {
+        dialog->updateInfo(true);
+    } else {
+        dialog->updateInfo(false, dets_[selectedIndex_].cls, dets_[selectedIndex_].color);
+    }
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
 }
 
 void ImageCanvas::setupSvg() {
@@ -739,7 +975,7 @@ static inline void splitClass(const QString& cls, QString& color, QString& type)
         type.clear();
         return;
     }
-    color = s.left(1).toUpper(); // B / R / G / 
+    color = s.left(1).toUpper(); // B / R / G /
     type  = s.mid(1);            // "1","2","Bs","Bb",...
 }
 
@@ -804,7 +1040,6 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 
         // 选择 big/small 的“源四点”（同样是 TL, BL, BR, TR；已在画布坐标）
         const QPolygonF& src = isBigType(type) ? big_src_on_painter : small_src_on_painter;
-
         // —— 求单应 & 渲染
         QTransform H;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -828,6 +1063,20 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 }
 
 void ImageCanvas::requestSave() {
-    qDebug() << "requestSave called";
-    emit annotationsPublished(dets_);
+    qDebug() << "requestSave called"; // 处理图片,绘制Mask
+    QPainter p(&raw_img);
+    drawMasks(maskRects_, p, false);
+    emit annotationsPublished(dets_, raw_img);
+}
+void ImageCanvas::ProcessInfoChanged(
+    const QString& EditedClass, const QString& Color, bool isCurrent = false) {
+    if (isCurrent) {
+        currentClass_ = EditedClass;
+        currentColor_ = Color;
+        createNewDetection();
+
+    } else {
+        dets_[selectedIndex()].color = Color;
+        setSelectedClass(EditedClass.trimmed());
+    }
 }

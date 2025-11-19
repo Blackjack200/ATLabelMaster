@@ -1,6 +1,8 @@
 #include "mainwindow.hpp"
 #include "logger/core.hpp"
-
+#include "ui/image_canvas.hpp"
+#include "ui/settings_dialog.hpp"
+#include "ui/stas_dialog.h"
 #include <QAction>
 #include <QApplication>
 #include <QDateTime>
@@ -16,8 +18,11 @@
 #include <QStringListModel>
 #include <QTreeView>
 #include <QUrl>
-
-#include "ui/image_canvas.hpp"
+#include <qaction.h>
+#include <qkeysequence.h>
+#include <qmenu.h>
+#include <qnamespace.h>
+#include <qobject.h>
 
 using ui::MainWindow;
 
@@ -70,6 +75,18 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 /* ---------------- 外部输入（更新 UI） ---------------- */
+void MainWindow::showSettingDialog() {
+    ui::SettingsDialog* dialog = new SettingsDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+}
+void MainWindow::showStasDialog() {
+    ui::StasDialog* dialog = new ui::StasDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &ui::StasDialog::getStasRequested, this, &ui::MainWindow::sigGetStasRequested);
+    connect(this, &ui::MainWindow::sigStasUpdateRequested, dialog, &ui::StasDialog::updateStasData);
+    dialog->show();
+}
 void MainWindow::showImage(const QImage& img) {
     ui_->label->setImage(img);
     ui_->label->setAlignment(Qt::AlignCenter);
@@ -296,6 +313,7 @@ void MainWindow::setupActions() {
     ensureAction(ui_->actionDelete, QKeySequence::Delete, tr("Delete"));
     ensureAction(ui_->actionSmart, QKeySequence(Qt::Key_Space), tr("Smart Annotate (Space)"));
     ensureAction(ui_->actionSettings, {}, tr("Settings"));
+    ensureAction(ui_->actionStas, QKeySequence(Qt::Key_F1), tr("Get STAS."));
 
     connect(ui_->actionOpen, &QAction::triggered, this, &MainWindow::sigOpenFolderRequested);
     connect(ui_->actionSave, &QAction::triggered, this, &MainWindow::sigSaveRequested);
@@ -304,16 +322,18 @@ void MainWindow::setupActions() {
     connect(ui_->actionHistEq, &QAction::triggered, this, &MainWindow::sigHistEqRequested);
     connect(ui_->actionDelete, &QAction::triggered, this, &MainWindow::sigDeleteRequested);
     connect(ui_->actionSmart, &QAction::triggered, this, &MainWindow::sigSmartAnnotateRequested);
+    connect(ui_->actionStas, &QAction::triggered, this, &MainWindow::showStasDialog);
     connect(ui_->actionSettings, &QAction::triggered, this, &MainWindow::sigSettingsRequested);
+    connect(ui_->menuImport, &QMenu::triggered, this, &MainWindow::sigImportFolderRequested);
 }
 
 void MainWindow::wireButtonsToActions() {
     connect(ui_->open_folder_button, &QPushButton::clicked, ui_->actionOpen, &QAction::trigger);
     connect(ui_->smart_button, &QPushButton::clicked, ui_->actionSmart, &QAction::trigger);
-    connect(ui_->previous_button, &QPushButton::clicked, ui_->actionPrev, &QAction::trigger);
+    connect(ui_->prev_pic, &QPushButton::clicked, ui_->actionPrev, &QAction::trigger);
     connect(ui_->next_pic, &QPushButton::clicked, ui_->actionNext, &QAction::trigger);
     connect(ui_->histogram_button, &QPushButton::clicked, ui_->actionHistEq, &QAction::trigger);
     connect(ui_->delete_button, &QPushButton::clicked, ui_->actionDelete, &QAction::trigger);
     connect(ui_->save_button, &QPushButton::clicked, ui_->actionSave, &QAction::trigger);
-    connect(ui_->pushButton, &QPushButton::clicked, ui_->actionSettings, &QAction::trigger);
+    connect(ui_->setttings_button, &QPushButton::clicked, ui_->actionSettings, &QAction::trigger);
 }

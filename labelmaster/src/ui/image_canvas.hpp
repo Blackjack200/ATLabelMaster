@@ -6,6 +6,12 @@
 #include <QRect>
 #include <QString>
 #include <QVector>
+#include <opencv2/objdetect.hpp>
+#include <qglobal.h>
+#include <qimage.h>
+#include <qlist.h>
+#include <qobject.h>
+#include <qvariant.h>
 
 class QPainter;
 class QKeyEvent;
@@ -25,7 +31,6 @@ public:
     void setImage(const QImage& img);
     const QImage& currentImage() const { return img_; }
     QString currentImagePath() const { return imgPath_; }
-
     void setModelInputSize(const QSize& s);
     void setRoiMode(RoiMode m);
     RoiMode roiMode() const { return roiMode_; }
@@ -45,16 +50,21 @@ public slots:
     // 检测结果显示/外部读写
     void setDetections(const QVector<Armor>& dets);  // 覆盖全部
     void clearDetections();
-    void addDetection(const Armor& a);               // 追加一个
+    void createNewDetection();                       // 新建一个Detction
+    void addDetection(const Armor& a);               // (新建之后调用)追加一个
     void updateDetection(int index, const Armor& a); // 更新一个
     void removeDetection(int index);                 // 删除一个
 
     // 类别与选中
     void setCurrentClass(const QString& cls) { currentClass_ = cls; } // 新框默认
     QString currentClass() const { return currentClass_; }
+    bool setSelectedInfo(const QString& cls, const QString& color);   // 改“选中框”的 cls 和 color
     bool setSelectedClass(const QString& cls);                        // 改“选中框”的 cls
     bool setSelectedIndex(int idx);                                   // -1 取消选中
     int selectedIndex() const { return selectedIndex_; }
+    // 更新颜色和类型
+    void ProcessInfoChanged(const QString& EditedClass, const QString& Color, bool isCurrent);
+    void histEqualize();
 signals:
     // ROI
     void roiChanged(const QRect& roiImg);
@@ -67,13 +77,14 @@ signals:
     void annotationCommitted(const Armor&);
 
     // 选中/悬停/更新/删除
-    void detectionSelected(int index);              // -1 无选中
-    void detectionHovered(int index);               // -1 无悬停
-    void detectionUpdated(int index, const Armor&); // 类别或点被改
-    void detectionRemoved(int index);               // 删除哪个
+    void detectionSelected(int index);                           // -1 无选中
+    void detectionHovered(int index);                            // -1 无悬停
+    void detectionUpdated(int index, const Armor&);              // 类别或点被改
+    void detectionUpdated(QVector<int> indexList, const Armor&); // 类别或点被改
+    void detectionRemoved(int index);                            // 删除哪个
 
     // 批量发布（供外部保存）
-    void annotationsPublished(const QVector<Armor>& armors);
+    void annotationsPublished(const QVector<Armor>& armors, const QImage& image);
 
 protected:
     // 绘制与交互
@@ -92,9 +103,9 @@ private:
     int hitHandleOnSelected(const QPoint& wpos) const; // 命中当前“选中目标”的角点
     int hitDetectionStrict(const QPoint& wpos) const;  // 严格在框内才算命中
     bool pointInsidePolyW(const QPolygonF& polyW, const QPointF& w) const;
-
-    void promptEditSelectedClass();
-
+    int hitMaskStrict(const QPoint& wpos) const;       // 命中Mask区域
+    // 编辑颜色和类别
+    void promptEditSelectedInfo(bool isCurrent = false);
     void updateFitRect();
     QRectF imageRectOnWidget() const;
     QPointF widgetToImage(const QPointF& p) const;
@@ -108,18 +119,24 @@ private:
     void drawDetections(QPainter& p) const; // 高亮选中/悬停 + 选中显示角点
     void drawDragRect(QPainter& p) const;   // 拖框预览
     void drawSvg(QPainter& p, const QVector<Armor>& armors) const;
+    // 绘制Mask
+    void clearMasks(); // 清空Masks
+    void drawMasks(const QVector<QRect> rect, QPainter& painter, bool isToWidget = true) const;
 
     // ROI 交互
     void beginFreeRoi(const QPoint& wpos);
     void updateFreeRoi(const QPoint& wpos);
     void endFreeRoi();
     void placeFixedRoiAt(const QPoint& wpos);
-
     void setupSvg();
+    // 直方图均衡化
 
 private:
-    // 图像
+    // 原图像
+    QImage raw_img;
+    // 实际显示和Mask处理的图像
     QImage img_;
+
     QString imgPath_;
 
     // 视图
@@ -144,8 +161,13 @@ private:
     QVector<Armor> dets_;
     int selectedIndex_ = -1;
     int hoverIndex_    = -1;
+    // Mask信息
+    QVector<QRect> maskRects_;
+    // 亮度提升
+    bool enhanceV_ = false;
 
     // 新增/编辑状态（正常状态内的细分）
+    bool isMaskMode    = false; // 是否为绘制Mask模式
     bool draggingRect_ = false; // 正在画新框
     QPoint dragRectStartW_;
     QRect dragRectImg_;
@@ -154,6 +176,7 @@ private:
     int hoverHandle_ = -1;      // 悬停角点（仅对 selected 生效）
 
     QString currentClass_;
+    QString currentColor_;
     QHash<QString, QSvgRenderer*> svgCache_;
 
     // 参数
