@@ -82,8 +82,8 @@ void SettingsDialog::setAutoSave(bool isAutoSave) {
     controller::AppSettings::instance().setautoSave(isAutoSave);
     update();
 }
-void SettingsDialog::setAutoEnhanceV(bool isAutoSave) {
-    controller::AppSettings::instance().setautoSave(isAutoSave);
+void SettingsDialog::setAutoEnhanceV(bool isAutoEnhanceV) {
+    controller::AppSettings::instance().setautoEnhanceV(isAutoEnhanceV);
     update();
 }
 void SettingsDialog::setVRate(int vRate) {

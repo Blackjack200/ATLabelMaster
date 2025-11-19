@@ -119,6 +119,9 @@ void ImageCanvas::setImage(const QImage& img) {
         clearRoi();
     }
     resetView();
+    if (controller::AppSettings::instance().autoEnhanceV()) { // 切换图片时自动增强亮度
+        histEqualize();
+    }
     update();
 }
 

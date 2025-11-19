@@ -30,7 +30,7 @@ public slots:
     void setFixedRoi(bool isFixedRoi);         // 设置固定ROI(decrepated)
     void setRoiH();                            // 设置ROI高度(decrepated)
     void setRoiW();                            // 设置ROI宽度(decrepated)
-    void resotre();                            // 恢复默认值
+    // void resotre();                            // 恢复默认值
 };
 
 } // namespace ui
