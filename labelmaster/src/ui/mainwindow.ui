@@ -401,7 +401,7 @@
     <string>数据统计</string>
    </property>
    <property name="shortcut">
-    <string>S</string>
+    <string>F1</string>
    </property>
   </action>
  </widget>

@@ -59,6 +59,8 @@ signals:
     void labelsLoaded(const QVector<Armor>& armors);
     // ===统计信息获取==
     void StasGetted(const int& count);
+    // ===自动保存===
+    void saveRequested();
 
 private:
     // 目录加载完成后再尝试选第一张

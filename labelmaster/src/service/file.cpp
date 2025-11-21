@@ -21,6 +21,7 @@
 #include <qbuffer.h>
 #include <qdebug.h>
 #include <qdir.h>
+#include <qfileinfo.h>
 #include <qglobal.h>
 #include <qhashfunctions.h>
 #include <qimage.h>
@@ -293,9 +294,6 @@ bool FileService::openFileAt(const QModelIndex& proxyIndex) {
     currentImagePath_ = path;       // 记住路径（保存时用）
     currentImageSize_ = img.size(); // 记住尺寸（保存/反归一化）
     saveLastVisited(path);
-
-    controller::DatasetManager::instance().saveProgress(/*index=*/0);
-
     const QString lbl = labelFileForImage(path);
     if (QFile::exists(lbl)) {
         QVector<Armor> armors = readLabelFile(lbl, currentImageSize_);
@@ -327,6 +325,10 @@ void FileService::next() {
         const QModelIndex idx = proxy_->index(r, 0, parent);
         const QModelIndex s   = mapFromProxyToSource(idx);
         if (s.isValid() && !fsModel_->isDir(s) && isImageFile(fsModel_->filePath(s))) {
+            if (controller::AppSettings::instance().autoSave()) {
+                // 自动保存当前标注
+                emit saveRequested();
+            }
             proxyCurrent_ = idx;
             emit currentIndexChanged(proxyCurrent_);
             openFileAt(proxyCurrent_);
@@ -347,6 +349,10 @@ void FileService::prev() {
         const QModelIndex idx = proxy_->index(r, 0, parent);
         const QModelIndex s   = mapFromProxyToSource(idx);
         if (s.isValid() && !fsModel_->isDir(s) && isImageFile(fsModel_->filePath(s))) {
+            if (controller::AppSettings::instance().autoSave()) {
+                // 自动保存当前标注
+                emit saveRequested();
+            }
             proxyCurrent_ = idx;
             emit currentIndexChanged(proxyCurrent_);
             openFileAt(proxyCurrent_);
@@ -383,7 +389,7 @@ bool FileService::openDir(const QString& dir, DataSet type) {
     emit busy(true);
 
     pendingDir_               = dir; // 不清空 pendingTargetPath_，以便恢复时指定目标文件
-    const QModelIndex srcRoot = fsModel_->setRootPath(dir); // 异步开始
+    const QModelIndex srcRoot = fsModel_->setRootPath(dir);                    // 异步开始
     if (!srcRoot.isValid()) {
         LOGW(QString("无效目录：%1").arg(dir));
         emit busy(false);
@@ -398,28 +404,25 @@ bool FileService::openDir(const QString& dir, DataSet type) {
     emit status(tr("打开目录：%1").arg(dir));
     LOGI(QString("打开目录：%1").arg(dir));
 
-    controller::AppSettings::instance().setlastImageDir(dir);
-    controller::DatasetManager::instance().setImageDir(dir);
-
     if (!setProxyRoot(dir)) {
         emit busy(false);
         pendingDir_.clear();
         return false;
     } else {
-        if (type != DataSet::LabelMaster) {                 // 开始导入
+        if (type != DataSet::LabelMaster) {                                    // 开始导入
             auto fail = [&](const QString& tip = nullptr, const QString& arg = nullptr) {
                 if (tip != nullptr && arg != nullptr) {
                     LOGW(QString("%1:%2").arg(tip).arg(arg));
                     emit status(tip, 1200);
                 }
             };
-            const QModelIndex target = findFirstImageUnder(proxyRoot_);
+            const QModelIndex target = findFirstImageUnder(proxyRoot_);        // 找第一张图片
 
             if (target.isValid()) {
                 for (int i = 0; i < proxy_->rowCount(target.parent()); i++) {
-                    QString imgPath = fsModel_->filePath(
-                        fsModel_->index(i, 0, mapFromProxyToSource(target.parent())));
-                    const QString labelPath = labelFileForImage(imgPath);
+                    QString imgPath         = fsModel_->filePath(fsModel_->index(
+                        i, 0, mapFromProxyToSource(target.parent()))); // 获取图片路径
+                    const QString labelPath = labelFileForImage(imgPath);      // 计算Label路径
                     if (QFile::exists(labelPath)) {
                         switch (type) {
                         case DataSet::SJTU: {
@@ -431,7 +434,6 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                                 fail("导入失败!无法打开Label:", labelPath);
                                 continue;
                             }
-                            qDebug() << labelPath;
                             QTextStream ts(&labelFile);
                             while (!ts.atEnd()) {
                                 QString raw = ts.readLine();
@@ -465,7 +467,6 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                                 // N（熄灭) 2
                                 // Purple	3
                                 int clsId = t.at(0).toInt();
-                                qDebug() << t.join(" ");
                                 if (0 <= clsId && clsId < 5) {
                                     convertStream << t.join(" ") << "\n";
                                 } else if (clsId > 5 && clsId < 9) {
@@ -478,7 +479,6 @@ bool FileService::openDir(const QString& dir, DataSet type) {
                             }
                             convertStream.seek(0);
                             QString Text = convertStream.readAll();
-                            qDebug() << Text;
                             buffer.close();
                             labelFile.close();
                             labelFile.open(QIODevice::WriteOnly);
@@ -624,15 +624,19 @@ void FileService::openPaths(const QStringList& paths) {
 
 // ---------- 记忆 & 恢复 ----------
 void FileService::saveLastVisited(const QString& imagePath) {
-    QSettings st("ATLabelMaster", "ATLabelMaster");
-    st.setValue("lastImagePath", imagePath);
-    st.setValue("lastDir", QFileInfo(imagePath).absolutePath());
+    // QSettings st("ATLabelMaster", "ATLabelMaster");
+    // st.setValue("lastImagePath", imagePath);
+    // st.setValue("lastDir", QFileInfo(imagePath).absolutePath());
+    controller::AppSettings::instance().setlastImagePath(imagePath);
+    controller::AppSettings::instance().setlastImageDir(QFileInfo(imagePath).absolutePath());
 }
 
 void FileService::tryRestoreLastVisited() {
-    QSettings st("ATLabelMaster", "ATLabelMaster");
-    const QString lastImg = st.value("lastImagePath").toString();
-    const QString lastDir = st.value("lastDir").toString();
+    const QString lastImg = controller::AppSettings::instance().lastImagePath();
+    const QString lastDir = controller::AppSettings::instance().lastImageDir();
+    // QSettings st("ATLabelMaster", "ATLabelMaster");
+    // const QString lastImg = st.value("lastImagePath").toString();
+    // const QString lastDir = st.value("lastDir").toString();
     if (lastDir.isEmpty())
         return;
 
@@ -646,7 +650,18 @@ void FileService::tryRestoreLastVisited() {
 // ---------- 标注 I/O（归一化格式 + 兼容旧像素格式） ----------
 QString FileService::labelFileForImage(const QString& imagePath) {
     QFileInfo fi(imagePath);
-    QDir labelDir(fi.absolutePath() + "/../label");
+    QDir labelDir;
+    if (controller::AppSettings::instance().saveDir().isEmpty()) {
+        labelDir = QDir(fi.absolutePath() + "/../label");
+    } else {
+        //绝对路径
+        labelDir = QDir(controller::AppSettings::instance().saveDir());
+        if (!labelDir.isAbsolute()) {
+            //相对路径
+            labelDir = QDir(fi.absolutePath() + "/../" + labelDir.path());
+        }
+    }
+    
     const QString dirPath = QDir::cleanPath(labelDir.absolutePath());
     return dirPath + "/" + fi.completeBaseName() + ".txt";
 }
@@ -798,8 +813,7 @@ void FileService::saveData(const QVector<Armor>& armors, const QImage& image) {
         LOGE(QString("保存图片失败：%1").arg(imgPath));
     }
     // 保存标注
-    const QString lblPath = labelFileForImage(imgPath);
-
+    QString lblPath = labelFileForImage(imgPath);
     if (writeLabelFile(lblPath, armors, sz)) {
         emit status(tr("已保存标注：%1").arg(QFileInfo(lblPath).fileName()), 900);
         LOGI(QString("保存标注：%1").arg(lblPath));

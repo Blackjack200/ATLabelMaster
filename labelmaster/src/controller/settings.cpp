@@ -10,7 +10,8 @@
 namespace controller {
 QScopedPointer<QSettings> AppSettings::s_iniOverride_;
 
-void AppSettings::initOrgApp(const QString& org, const QString& app, const QString& domain) noexcept {
+void AppSettings::initOrgApp(
+    const QString& org, const QString& app, const QString& domain) noexcept {
     // Best called in main() before creating QApplication/QGuiApplication.
     QCoreApplication::setOrganizationDomain(domain);
     QCoreApplication::setOrganizationName(org);
@@ -28,7 +29,6 @@ AppSettings& AppSettings::instance() noexcept {
     static AppSettings inst;
     return inst;
 }
-
 AppSettings::AppSettings()
     // If ini override exists, duplicate its format/path; else default org/app.
     : settings_(

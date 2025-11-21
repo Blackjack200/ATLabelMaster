@@ -77,6 +77,7 @@ MainWindow::~MainWindow() = default;
 /* ---------------- 外部输入（更新 UI） ---------------- */
 void MainWindow::showSettingDialog() {
     ui::SettingsDialog* dialog = new SettingsDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }
 void MainWindow::showStasDialog() {
@@ -312,7 +313,7 @@ void MainWindow::setupActions() {
     ensureAction(ui_->actionDelete, QKeySequence::Delete, tr("Delete"));
     ensureAction(ui_->actionSmart, QKeySequence(Qt::Key_Space), tr("Smart Annotate (Space)"));
     ensureAction(ui_->actionSettings, {}, tr("Settings"));
-    ensureAction(ui_->actionStas, QKeySequence(Qt::Key_S), tr("Get STAS."));
+    ensureAction(ui_->actionStas, QKeySequence(Qt::Key_F1), tr("Get STAS."));
 
     connect(ui_->actionOpen, &QAction::triggered, this, &MainWindow::sigOpenFolderRequested);
     connect(ui_->actionSave, &QAction::triggered, this, &MainWindow::sigSaveRequested);

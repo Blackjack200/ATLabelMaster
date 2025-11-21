@@ -61,6 +61,8 @@ int main(int argc, char* argv[]) {
     QObject::connect(&files, &FileService::busy, &w, &ui::MainWindow::setBusy);
     QObject::connect(&files, &FileService::StasGetted, &w, &ui::MainWindow::sigStasUpdateRequested);
     QObject::connect(
+        &files , &FileService::saveRequested, &w, &ui::MainWindow::sigSaveRequested);
+    QObject::connect(
         &w, &ui::MainWindow::sigHistEqRequested, w.ui()->label, &ImageCanvas::histEqualize);
     // ImageCanvas <-> SmartDetector 连接 检测和检测结果
     QObject::connect(
