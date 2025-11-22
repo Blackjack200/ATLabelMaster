@@ -317,7 +317,7 @@ void FileService::openIndex(const QModelIndex& proxyIndex) {
 }
 
 // ---------- 浏览 ----------
-void FileService::next() {
+void FileService::next(bool allowAutoSave) {
     if (!proxyCurrent_.isValid())
         return;
 
@@ -329,7 +329,7 @@ void FileService::next() {
         const QModelIndex idx = proxy_->index(r, 0, parent);
         const QModelIndex s   = mapFromProxyToSource(idx);
         if (s.isValid() && !fsModel_->isDir(s) && isImageFile(fsModel_->filePath(s))) {
-            if (controller::AppSettings::instance().autoSave()) {
+            if (controller::AppSettings::instance().autoSave() && allowAutoSave) {
                 // 自动保存当前标注
                 emit saveRequested();
             }
@@ -376,12 +376,12 @@ void FileService::deleteCurrent() {
 
     const QString path = fsModel_->filePath(s);
     if (QFile::remove(path)) {
-        LOGW(QString("已删除：%1").arg(path));
+        LOGI(QString("已删除：%1").arg(path));
         const QString labelPath = labelFileForImage(path);
         if (QFile::exists(labelPath) && QFile::remove(labelPath)) {
-            LOGW(QString("已删除：%1").arg(labelPath));
+            LOGI(QString("已删除：%1").arg(labelPath));
         }
-        next();
+        next(false);
         if (!proxyCurrent_.isValid()) {
             currentImagePath_.clear();
             currentImageSize_ = {};
@@ -800,7 +800,7 @@ QVector<Armor> FileService::readLabelFile(const QString& labelPath, const QSize&
 }
 
 // ---------- 保存标注（对外槽） ----------
-void FileService::saveData(const QVector<Armor>& armors, const QImage& image) {
+void FileService::saveData(const QVector<Armor>& armors, const QImage& image, bool needSaveImg) {
     if (!pendingDir_.isEmpty()) {
         emit status(tr("目录加载中，稍后保存"), 900);
         return;
@@ -831,12 +831,14 @@ void FileService::saveData(const QVector<Armor>& armors, const QImage& image) {
         }
     }
     // 保存图片
-    if (image.save(imgPath)) {
-        emit status(tr("已保存图片：%1").arg(QFileInfo(imgPath).fileName()), 900);
-        LOGI(QString("保存图片：%1").arg(imgPath));
-    } else {
-        emit status(tr("保存图片失败"), 1200);
-        LOGE(QString("保存图片失败：%1").arg(imgPath));
+    if (needSaveImg) {
+        if (image.save(imgPath)) {
+            emit status(tr("已保存图片：%1").arg(QFileInfo(imgPath).fileName()), 900);
+            LOGI(QString("保存图片：%1").arg(imgPath));
+        } else {
+            emit status(tr("保存图片失败"), 1200);
+            LOGE(QString("保存图片失败：%1").arg(imgPath));
+        }
     }
     // 保存标注
     QString lblPath = labelFileForImage(imgPath);

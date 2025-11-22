@@ -34,14 +34,14 @@ public slots:
     void openIndex(const QModelIndex&);                                // 由文件树激活
 
     // === 浏览 ===
-    void next();
+    void next(bool allowAutoSave = true);
     void prev();
 
     // === 修改 ===
     void deleteCurrent(); // 直接删除当前文件（简单实现）
 
     // === 保存标注 ===
-    void saveData(const QVector<Armor>& armors, const QImage& image);
+    void saveData(const QVector<Armor>& armors, const QImage& image, bool needSaveImg);
 
     // === 获取统计信息 ==
     void getStas(int colorId, int classId);

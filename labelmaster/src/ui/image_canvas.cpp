@@ -1061,7 +1061,7 @@ void ImageCanvas::requestSave() {
     // qDebug() << "requestSave called"; // 处理图片,绘制Mask
     QPainter p(&raw_img);
     drawMasks(maskRects_, p, false);
-    emit annotationsPublished(dets_, raw_img);
+    emit annotationsPublished(dets_, raw_img, !maskRects_.isEmpty());
 }
 void ImageCanvas::ProcessInfoChanged(
     const QString& EditedClass, const QString& Color, bool isCurrent = false) {

@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
         &w, &ui::MainWindow::sigImportFolderRequested, &files, &FileService::importFrom);
     QObject::connect(&w, &ui::MainWindow::sigFileActivated, &files, &FileService::openIndex);
     QObject::connect(&w, &ui::MainWindow::sigDroppedPaths, &files, &FileService::openPaths);
-    QObject::connect(&w, &ui::MainWindow::sigNextRequested, &files, &FileService::next);
+    QObject::connect(&w, &ui::MainWindow::sigNextRequested, &files, [&]() { files.next(); });
     QObject::connect(&w, &ui::MainWindow::sigPrevRequested, &files, &FileService::prev);
     QObject::connect(&w, &ui::MainWindow::sigDeleteRequested, &files, &FileService::deleteCurrent);
     QObject::connect(&w, &ui::MainWindow::sigGetStasRequested, &files, &FileService::getStas);
