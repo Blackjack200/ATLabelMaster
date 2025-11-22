@@ -76,15 +76,20 @@ color label x1 y1 x2 y2 x3 y3 x4 y4
 ### 典型的标注错误
 
 强品硬凑蒙版，忽略灯条，应以灯条为主
-[!错误1](docs/zh_cn/error1.png)
-[!错误2](docs/zh_cn/error2.png)
+![错误1](docs/zh_cn/error1.png)
+![错误2](docs/zh_cn/error2.png)
 
 强拼硬凑蒙版，香蕉线(标的什么玩意)
-[!错误3](docs/zh_cn/error3.png)
+![错误3](docs/zh_cn/error3.png)
 
 左右不分
-[!错误4](docs/zh_cn/error4.png)
+![错误4](docs/zh_cn/error4.png)
 
+
+### TBD
+
+
+## 其他
 更多标注标准，参照哈工深的标注工具。都是非常宝贵的标注经验。
 同时，有意愿交换数据集的学校可以联系我: 3159890292@qq.com
 
