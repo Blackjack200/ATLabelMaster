@@ -16,6 +16,7 @@ void AppSettings::initOrgApp(
     QCoreApplication::setOrganizationDomain(domain);
     QCoreApplication::setOrganizationName(org);
     QCoreApplication::setApplicationName(app);
+    // keep default true; set false if you dislike fallbacks
 }
 
 void AppSettings::useIniFile(const QString& iniFilePath) {
