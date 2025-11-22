@@ -76,7 +76,7 @@ void SmartDetector::detectMat(const cv::Mat& mat) {
         // cv::Mat draw = input.clone();
         // QImage anno  = matToQImage(draw);
 
-        qDebug() << "emit detected";
+        // qDebug() << "emit detected";
         emit detected(sigArmors);
 
     } catch (const std::exception& e) {

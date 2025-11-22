@@ -65,8 +65,9 @@ signals:
 private:
     // 目录加载完成后再尝试选第一张
     void selectFirst(const QString& path);
-    bool openDir(const QString& dir, DataSet type = DataSet::LabelMaster);
+    bool openDir(const QString& dir);
     bool openFileAt(const QModelIndex& proxyIndex);
+    bool tryImportDataSetAfterLoaded();
     void tryOpenFirstAfterLoaded(const QString& dir);
     QModelIndex findFirstImageUnder(const QModelIndex& proxyRoot) const;
     QModelIndex mapFromProxyToSource(const QModelIndex&) const;
@@ -97,7 +98,7 @@ private:
     static int colorToken2Id(const QString& token);
 
 private:
-    QString pendingDir_;                                     // 临时Dir
+    QString pendingDir_;
     QString pendingTargetPath_;
     QFileSystemModel* fsModel_    = nullptr;                 // 源模型
     QSortFilterProxyModel* proxy_ = nullptr;                 // 只显示图片与目录
@@ -105,4 +106,5 @@ private:
     QPersistentModelIndex proxyCurrent_;
     QString currentImagePath_;                               // 当前图片绝对路径
     QSize currentImageSize_;                                 // 当前图片尺寸（归一化需要）
+    DataSet currentDataSet = DataSet::LabelMaster;
 };

@@ -14,7 +14,7 @@ public:
 
     // ---- 一次性同步 ----
     void sync() noexcept;
-    //恢复默认值
+    // 恢复默认值
     void restoreDefaults();
 
     // ====== 这里用宏自动生成 getter/setter（不使用模板） ======
@@ -66,9 +66,7 @@ public:
     APP_SETTING_RW_FLOAT(
         numberClassifierThreshold, Keys::kNumberClassifierThreshold,
         Def::kNumberClassifierThreshold)
-    APP_SETTING_RW_FLOAT(
-    vRate, Keys::kvRate, Def::kVRate)    
-    
+    APP_SETTING_RW_FLOAT(vRate, Keys::kvRate, Def::kVRate)
 
 #undef APP_SETTING_RW_STR
 #undef APP_SETTING_RW_INT
@@ -98,7 +96,7 @@ private:
     };
     struct Def {
         static constexpr const char* kSaveDir             = "label";
-        static constexpr const char* kAssetsDir           = "/home/developer/ws/assets";
+        static constexpr const char* kAssetsDir           = "/usr/opt/LabelMaster/assets"; //应用启动时会自动设置当前Application目录
         static constexpr bool kAutoSave                   = false;
         static constexpr bool kAutoEnhanceV               = false;
         static constexpr bool kFixedRoi                   = false;
@@ -106,7 +104,6 @@ private:
         static constexpr int kRoiH                        = 480;
         static constexpr float kNumberClassifierThreshold = 80.f;
         static constexpr const float kVRate               = 4;
-
     };
 
     QSettings settings_;

@@ -17,6 +17,7 @@
 #include <QSortFilterProxyModel>
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <qabstractitemmodel.h>
 #include <qbuffer.h>
 #include <qdebug.h>
@@ -232,25 +233,28 @@ void FileService::openFolderDialog(const DataSet& type) {
     const QString dir = QFileDialog::getExistingDirectory(nullptr, tr("选择图片文件夹"));
     if (dir.isEmpty())
         return;
-    openDir(dir, type);
+    currentDataSet = type; // 设置DataSet用于判断是否导入
+    openDir(dir);
 }
-// 目录加载完成后再尝试选第一张
+// 目录加载完成后如果需要导入，则进行导入，如果不需要再尝试选第一张
 void FileService::selectFirst(const QString& path) {
-    if (pendingDir_.isEmpty())
+    if (pendingDir_.isEmpty()) {
+        emit busy(false);
         return;
-    if (path == pendingDir_ || path.startsWith(pendingDir_ + '/')) {
-        if (!setProxyRoot(pendingDir_)) {
-            return;
-        }
-        tryOpenFirstAfterLoaded(pendingDir_);
+    }
+    if (!(path == pendingDir_ || path.startsWith(pendingDir_ + '/'))) {
+        return;
+    }
+    if (tryImportDataSetAfterLoaded()) {
+        QTimer::singleShot(0, this, [this]() { tryOpenFirstAfterLoaded(pendingDir_); });
     }
 }
 // BFS 找第一张图片（跨多层）
-QModelIndex FileService::findFirstImageUnder(const QModelIndex& root) const {
-    if (!root.isValid())
+QModelIndex FileService::findFirstImageUnder(const QModelIndex& proxyRoot) const {
+    if (!proxyRoot.isValid())
         return {};
     QQueue<QModelIndex> q;
-    q.enqueue(root);
+    q.enqueue(proxyRoot);
 
     while (!q.isEmpty()) {
         QModelIndex p  = q.dequeue();
@@ -373,6 +377,10 @@ void FileService::deleteCurrent() {
     const QString path = fsModel_->filePath(s);
     if (QFile::remove(path)) {
         LOGW(QString("已删除：%1").arg(path));
+        const QString labelPath = labelFileForImage(path);
+        if (QFile::exists(labelPath) && QFile::remove(labelPath)) {
+            LOGW(QString("已删除：%1").arg(labelPath));
+        }
         next();
         if (!proxyCurrent_.isValid()) {
             currentImagePath_.clear();
@@ -385,11 +393,11 @@ void FileService::deleteCurrent() {
 }
 
 // ---------- 目录打开 ----------
-bool FileService::openDir(const QString& dir, DataSet type) {
+bool FileService::openDir(const QString& dir) {
     emit busy(true);
 
     pendingDir_               = dir; // 不清空 pendingTargetPath_，以便恢复时指定目标文件
-    const QModelIndex srcRoot = fsModel_->setRootPath(dir);                    // 异步开始
+    const QModelIndex srcRoot = fsModel_->setRootPath(dir);                        // 异步开始
     if (!srcRoot.isValid()) {
         LOGW(QString("无效目录：%1").arg(dir));
         emit busy(false);
@@ -403,100 +411,7 @@ bool FileService::openDir(const QString& dir, DataSet type) {
 
     emit status(tr("打开目录：%1").arg(dir));
     LOGI(QString("打开目录：%1").arg(dir));
-
-    if (!setProxyRoot(dir)) {
-        emit busy(false);
-        pendingDir_.clear();
-        return false;
-    } else {
-        if (type != DataSet::LabelMaster) {                                    // 开始导入
-            auto fail = [&](const QString& tip = nullptr, const QString& arg = nullptr) {
-                if (tip != nullptr && arg != nullptr) {
-                    LOGW(QString("%1:%2").arg(tip).arg(arg));
-                    emit status(tip, 1200);
-                }
-            };
-            const QModelIndex target = findFirstImageUnder(proxyRoot_);        // 找第一张图片
-
-            if (target.isValid()) {
-                for (int i = 0; i < proxy_->rowCount(target.parent()); i++) {
-                    QString imgPath         = fsModel_->filePath(fsModel_->index(
-                        i, 0, mapFromProxyToSource(target.parent()))); // 获取图片路径
-                    const QString labelPath = labelFileForImage(imgPath);      // 计算Label路径
-                    if (QFile::exists(labelPath)) {
-                        switch (type) {
-                        case DataSet::SJTU: {
-                            QBuffer buffer;
-                            buffer.open(QIODevice::ReadWrite);
-                            QTextStream convertStream(&buffer);
-                            QFile labelFile(labelPath);
-                            if (!labelFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                                fail("导入失败!无法打开Label:", labelPath);
-                                continue;
-                            }
-                            QTextStream ts(&labelFile);
-                            while (!ts.atEnd()) {
-                                QString raw = ts.readLine();
-                                QStringList t;
-                                if (!StringProcess::processLabelString(raw, t)) {
-                                    continue;
-                                }
-
-                                for (int i = 2; i > 0; i--) {
-                                    t.move(t.size() - i, 0);
-                                }
-                                // 颜色字段:id
-                                // 装甲板标注目标ID见下表
-                                // 贴纸	ID
-                                // G（哨兵）	0
-                                // 1（一号）	1
-                                // 2（二号）	2
-                                // 3（三号）	3
-                                // 4（四号）	4
-                                // 5（五号）	5
-                                // O（前哨站）	6
-                                // Bs（基地）	7
-                                // Bb（基地大装甲）	8
-                                // L3（三号平衡）	9
-                                // L4（四号平衡）	10
-                                // L5（五号平衡）	11
-                                // 颜色ID见下表
-                                // 类别	color
-                                // Blue	0
-                                // Red	1
-                                // N（熄灭) 2
-                                // Purple	3
-                                int clsId = t.at(0).toInt();
-                                if (0 <= clsId && clsId < 5) {
-                                    convertStream << t.join(" ") << "\n";
-                                } else if (clsId > 5 && clsId < 9) {
-                                    clsId--;
-                                    t[0] = QString(QChar('0' + clsId));
-                                    convertStream << t.join(" ") << "\n";
-                                } else {
-                                    continue;
-                                }
-                            }
-                            convertStream.seek(0);
-                            QString Text = convertStream.readAll();
-                            buffer.close();
-                            labelFile.close();
-                            labelFile.open(QIODevice::WriteOnly);
-                            ts << Text;
-                            labelFile.close();
-                            break;
-                        }
-                        default: break;
-                        }
-                    } else {
-                        fail("导入失败!Label不存在:", labelPath);
-                    }
-                }
-            }
-        }
-        tryOpenFirstAfterLoaded(dir);
-        return true;
-    }
+    return true;
 }
 
 bool FileService::setProxyRoot(const QString& dir) {
@@ -514,15 +429,125 @@ bool FileService::setProxyRoot(const QString& dir) {
     if (pxRoot.model() != proxy_)
         return false;
 
-    proxyRoot_ = pxRoot;
-
-    const int rows = proxy_->rowCount(proxyRoot_);
+    proxyRoot_     = pxRoot;
+    const int rows = proxy_->rowCount(pxRoot);
     if (rows == 0)
         return false;
     return true;
 }
+bool FileService::tryImportDataSetAfterLoaded() {
+    if (currentDataSet != DataSet::LabelMaster) {                                  // 开始导入
+        auto fail = [&](const QString& tip, const QString& arg) {
+            emit status(tip, 1200);
+            LOGE(QString("%1:%2").arg(tip).arg(arg));
+        };
+        const QModelIndex target = findFirstImageUnder(proxyRoot_);                // 找第一张图片
+        if (target.isValid()) {
+            for (int i = 0; i < proxy_->rowCount(target.parent()); i++) {
+                QString imgPath = fsModel_->filePath(
+                    fsModel_->index(i, 0, mapFromProxyToSource(target.parent()))); // 获取图片路径
+                const QString labelPath = labelFileForImage(imgPath);              // 计算Label路径
+                if (QFile::exists(labelPath)) {
+                    switch (currentDataSet) {
+                    case DataSet::SJTU: {
+                        QBuffer buffer;
+                        buffer.open(QIODevice::ReadWrite);
+                        QTextStream convertStream(&buffer);
+                        QFile labelFile(labelPath);
+                        if (!labelFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                            fail("导入失败!无法打开Label", labelPath);
+                            return false;
+                        }
+                        QTextStream ts(&labelFile);
+                        while (!ts.atEnd()) {
+                            QString raw = ts.readLine();
+                            QStringList t;
+                            if (!StringProcess::processLabelString(raw, t)) {
+                                continue;
+                            }
+                            // 格式检查
+                            if (t.size() != 10) {
+                                fail("格式错误!请检查格式是否正确", labelPath);
+                                return false;
+                            }
 
+                            bool ok         = true;
+                            int clsId       = t[t.size() - 2].toInt(&ok);
+                            const int colId = t[t.size() - 1].toInt(&ok);
+                            if (!(clsId >= 0 && clsId < 12) || !(0 <= colId && colId < 4)) {
+                                ok = false;
+                            }
+                            for (int i = 0; i < 8; i++) {
+                                if (std::fabs(t.at(i).toDouble(&ok)) > 1.5) {
+                                    fail("格式错误!请检查格式是否正确!", labelPath);
+                                    return false;
+                                }
+                            }
+                            if (!ok) {
+                                fail("格式错误!请检查格式是否正确", labelPath);
+                                return false;
+                            }
+                            for (int i = 2; i > 0; i--) {
+
+                                t.move(t.size() - i, 0);
+                            }
+                            // 颜色字段:id
+                            // 装甲板标注目标ID见下表
+                            // 贴纸	ID
+                            // G（哨兵）	0
+                            // 1（一号）	1
+                            // 2（二号）	2
+                            // 3（三号）	3
+                            // 4（四号）	4
+                            // 5（五号）	5
+                            // O（前哨站）	6
+                            // Bs（基地）	7
+                            // Bb（基地大装甲）	8
+                            // L3（三号平衡）	9
+                            // L4（四号平衡）	10
+                            // L5（五号平衡）	11
+                            // 颜色ID见下表
+                            // 类别	color
+                            // Blue	0
+                            // Red	1
+                            // N（熄灭) 2
+                            // Purple	3
+                            if (0 <= clsId && clsId < 5) {
+                                convertStream << t.join(" ") << "\n";
+                            } else if (clsId > 5 && clsId < 9) {
+                                clsId--;
+                                t[0] = QString(QChar('0' + clsId));
+                                convertStream << t.join(" ") << "\n";
+                            } else {
+                                continue;
+                            }
+                        }
+                        convertStream.seek(0);
+                        QString Text = convertStream.readAll();
+                        buffer.close();
+                        labelFile.close();
+                        labelFile.open(QIODevice::WriteOnly);
+                        ts << Text;
+                        labelFile.close();
+                        break;
+                    }
+                    default: break;
+                    }
+                };
+            }
+        } else {
+            fail("导入失败!目标目录无效!", fsModel_->filePath(target));
+            return false;
+        }
+    }
+    return true;
+}
 void FileService::tryOpenFirstAfterLoaded(const QString& dir) {
+    if (!setProxyRoot(dir)) {
+        emit busy(false);
+        pendingDir_.clear();
+        return;
+    };
     // 优先：若指定了目标文件（比如恢复上次图片）
     if (!pendingTargetPath_.isEmpty()) {
         const QModelIndex srcIdx = fsModel_->index(pendingTargetPath_);
@@ -534,11 +559,12 @@ void FileService::tryOpenFirstAfterLoaded(const QString& dir) {
                 openFileAt(proxyCurrent_);
                 emit busy(false);
                 pendingDir_.clear();
+                pendingTargetPath_.clear();
                 return;
             }
         }
-        // 定位失败则退化为第一张（不清空 pendingTargetPath_）
     }
+    // 定位失败则退化为第一张（不清空 pendingTargetPath_）
 
     const QModelIndex target = findFirstImageUnder(proxyRoot_);
     if (target.isValid()) {
@@ -644,7 +670,7 @@ void FileService::tryRestoreLastVisited() {
         pendingTargetPath_ = lastImg; // 先设目标，再 openDir
     }
     openDir(lastDir);
-    QTimer::singleShot(0, this, [this, lastDir] { tryOpenFirstAfterLoaded(lastDir); });
+    // QTimer::singleShot(0, this, [this, lastDir] { tryOpenFirstAfterLoaded(lastDir); });
 }
 
 // ---------- 标注 I/O（归一化格式 + 兼容旧像素格式） ----------
@@ -654,14 +680,14 @@ QString FileService::labelFileForImage(const QString& imagePath) {
     if (controller::AppSettings::instance().saveDir().isEmpty()) {
         labelDir = QDir(fi.absolutePath() + "/../label");
     } else {
-        //绝对路径
+        // 绝对路径
         labelDir = QDir(controller::AppSettings::instance().saveDir());
         if (!labelDir.isAbsolute()) {
-            //相对路径
+            // 相对路径
             labelDir = QDir(fi.absolutePath() + "/../" + labelDir.path());
         }
     }
-    
+
     const QString dirPath = QDir::cleanPath(labelDir.absolutePath());
     return dirPath + "/" + fi.completeBaseName() + ".txt";
 }
