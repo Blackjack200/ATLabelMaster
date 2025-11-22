@@ -41,9 +41,6 @@
 #include <qsize.h>
 #include <qtmetamacros.h>
 #include <qvariant.h>
-#include <ranges>
-#include <type_traits>
-#include <vector>
 
 // ---------- JSON 工具 ----------
 static QJsonArray toJsonPt(const QPointF& p) { return QJsonArray{p.x(), p.y()}; }
@@ -177,10 +174,10 @@ void ImageCanvas::requestDetect() {
 
 /* ===== 外部读写 ===== */
 void ImageCanvas::setDetections(const QVector<Armor>& dets) {
-    qDebug() << "setDetections: " << dets.size();
+    // qDebug() << "setDetections: " << dets.size();
     dets_ = dets;
     if (dets_.isEmpty()) {
-        qDebug() << "setDetections: empty";
+        // qDebug() << "setDetections: empty";
         selectedIndex_ = -1;
     } else if (selectedIndex_ >= dets_.size())
         selectedIndex_ = dets_.size() - 1;
@@ -682,7 +679,6 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* e) {
             case 2: A.p2 = point; break;
             default: A.p3 = point;
             }
-            qDebug() << A.p0 << " " << A.p1 << " " << A.p2 << " " << A.p3 << "\n";
         };
         if (e->modifiers() == Qt::KeyboardModifier::AltModifier) { // 平行绘制模式
             QPointF res;
@@ -1018,7 +1014,6 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
         color = a.color;
         type  = a.cls;
         // splitClass(a.cls, color, type);
-        // qDebug() << "color=" << color << "type=" << type;
 
         // 找到对应的 QSvgRenderer（建议你的 svgCache_ 用“类型名”做 key，比如
         // "1","2","Bb","Bs","S","O"...）
@@ -1063,10 +1058,10 @@ void ImageCanvas::drawSvg(QPainter& p, const QVector<Armor>& armors) const {
 }
 
 void ImageCanvas::requestSave() {
-    qDebug() << "requestSave called"; // 处理图片,绘制Mask
+    // qDebug() << "requestSave called"; // 处理图片,绘制Mask
     QPainter p(&raw_img);
     drawMasks(maskRects_, p, false);
-    emit annotationsPublished(dets_, raw_img);
+    emit annotationsPublished(dets_, raw_img, !maskRects_.isEmpty());
 }
 void ImageCanvas::ProcessInfoChanged(
     const QString& EditedClass, const QString& Color, bool isCurrent = false) {

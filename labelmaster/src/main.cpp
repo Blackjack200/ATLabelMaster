@@ -2,7 +2,6 @@
 #include "detector/smart_detector.hpp"
 #include "logger/core.hpp"
 #include "service/file.hpp"
-#include "types.hpp"
 #include "ui/image_canvas.hpp"
 #include "ui/info_dialog.h"
 #include "ui/mainwindow.hpp"
@@ -10,17 +9,25 @@
 #include <QFile>
 #include <pthread.h>
 #include <qapplication.h>
+#include <qcoreapplication.h>
 #include <qglobal.h>
 #include <qobject.h>
 #include <qtmetamacros.h>
 
-#define ASSETS_PATH "/home/developer/ws/assets"
-
 int main(int argc, char* argv[]) {
     // 1) 初始化应用配置系统(在 QApplication 之前，否则会Unknown Organization)
     // 2) 安装 Qt 的全局消息处理器，尽早捕获日志
-    controller::AppSettings::initOrgApp("LabelMaster", "LabelMaster", "LabelMaster.org");
     QApplication app(argc, argv);
+    controller::AppSettings::initOrgApp("LabelMaster", "LabelMaster", "LabelMaster.org");
+#ifdef Q_OS_MAC
+    // 在 Mac 上，从 MacOS 目录往上退一级，再进入 Resources
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cdUp();
+    controller::AppSettings::instance().setassetsDir(dir.absolutePath() + "/Resources");
+#else
+    controller::AppSettings::instance().setassetsDir(
+        QCoreApplication::applicationDirPath() + "/assets");
+#endif
     logger::Logger::installQtHandler();
     ui::MainWindow w;
     FileService files;
@@ -46,7 +53,7 @@ int main(int argc, char* argv[]) {
         &w, &ui::MainWindow::sigImportFolderRequested, &files, &FileService::importFrom);
     QObject::connect(&w, &ui::MainWindow::sigFileActivated, &files, &FileService::openIndex);
     QObject::connect(&w, &ui::MainWindow::sigDroppedPaths, &files, &FileService::openPaths);
-    QObject::connect(&w, &ui::MainWindow::sigNextRequested, &files, &FileService::next);
+    QObject::connect(&w, &ui::MainWindow::sigNextRequested, &files, [&]() { files.next(); });
     QObject::connect(&w, &ui::MainWindow::sigPrevRequested, &files, &FileService::prev);
     QObject::connect(&w, &ui::MainWindow::sigDeleteRequested, &files, &FileService::deleteCurrent);
     QObject::connect(&w, &ui::MainWindow::sigGetStasRequested, &files, &FileService::getStas);
@@ -60,8 +67,7 @@ int main(int argc, char* argv[]) {
     QObject::connect(&files, &FileService::status, &w, &ui::MainWindow::setStatus);
     QObject::connect(&files, &FileService::busy, &w, &ui::MainWindow::setBusy);
     QObject::connect(&files, &FileService::StasGetted, &w, &ui::MainWindow::sigStasUpdateRequested);
-    QObject::connect(
-        &files , &FileService::saveRequested, &w, &ui::MainWindow::sigSaveRequested);
+    QObject::connect(&files, &FileService::saveRequested, &w, &ui::MainWindow::sigSaveRequested);
     QObject::connect(
         &w, &ui::MainWindow::sigHistEqRequested, w.ui()->label, &ImageCanvas::histEqualize);
     // ImageCanvas <-> SmartDetector 连接 检测和检测结果

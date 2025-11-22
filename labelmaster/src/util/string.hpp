@@ -13,9 +13,7 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QUrl>
-#include <chrono>
 #include <cmath>
-#include <cstddef>
 #include <qabstractitemmodel.h>
 #include <qbuffer.h>
 #include <qdebug.h>
